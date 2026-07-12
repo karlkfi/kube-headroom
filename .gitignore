@@ -1,0 +1,19 @@
+# Scratch / design (adopted into docs/ via Q9)
+/tmp/
+
+# Build output
+/bin/
+/dist/
+*.test
+*.out
+cover.out
+coverage.*
+
+# Editor / OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Go
+vendor/
