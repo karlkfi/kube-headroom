@@ -16,16 +16,13 @@ import (
 
 var _ = Describe("HeadroomConfig Controller", func() {
 	Context("When reconciling a resource", func() {
-		const (
-			resourceName      = "test-resource"
-			resourceNamespace = "default"
-		)
+		// HeadroomConfig is a cluster-scoped singleton; the only valid name is "cluster".
+		const resourceName = kubeheadroomv1alpha1.SingletonName
 
 		ctx := context.Background()
 
 		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: resourceNamespace,
+			Name: resourceName,
 		}
 		headroomconfig := &kubeheadroomv1alpha1.HeadroomConfig{}
 
@@ -35,8 +32,7 @@ var _ = Describe("HeadroomConfig Controller", func() {
 			if err != nil && errors.IsNotFound(err) {
 				resource := &kubeheadroomv1alpha1.HeadroomConfig{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: resourceNamespace,
+						Name: resourceName,
 					},
 					// TODO(user): Specify other spec details if needed.
 				}
