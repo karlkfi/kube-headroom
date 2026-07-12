@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- kube-headroom_v1alpha1_headroomconfig.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

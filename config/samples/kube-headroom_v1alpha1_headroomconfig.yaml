@@ -1,0 +1,9 @@
+apiVersion: kube-headroom.dev/v1alpha1
+kind: HeadroomConfig
+metadata:
+  labels:
+    app.kubernetes.io/name: kube-headroom
+    app.kubernetes.io/managed-by: kustomize
+  name: headroomconfig-sample
+spec:
+  # TODO(user): Add fields here

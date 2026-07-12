@@ -20,6 +20,17 @@ Queue). Conventions:
 
 ## Layout
 
+kubebuilder v4 project. API group / annotation prefix: **`kube-headroom.dev`**
+(defined once as `v1alpha1.GroupName`).
+
 - `internal/policy/` — pure, k8s-free policy core (`ComputeNode`); table +
   property tests cover every §5 invariant.
+- `api/v1alpha1/` — `HeadroomConfig` CRD (cluster-scoped singleton, name
+  `cluster`; §9.3) and the label/annotation key constants.
+- `internal/controller/` — controllers (node reconciler lands in Q4).
+- `config/` — kustomize manifests (CRD, RBAC, manager).
 - `docs/plan/` — plan docs for M/L backlog items.
+
+Build: `make manifests generate` after editing API types; `make build` /
+`make test` (envtest). `make run` runs the manager against the current
+kubecontext.

@@ -1,0 +1,296 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.21.0
+  name: headroomconfigs.kube-headroom.dev
+spec:
+  group: kube-headroom.dev
+  names:
+    kind: HeadroomConfig
+    listKind: HeadroomConfigList
+    plural: headroomconfigs
+    shortNames:
+    - hcfg
+    singular: headroomconfig
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.policy
+      name: Policy
+      type: string
+    - jsonPath: .spec.dryRun
+      name: DryRun
+      type: boolean
+    - jsonPath: .status.managedPods
+      name: ManagedPods
+      type: integer
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: HeadroomConfig is the cluster-scoped, singleton configuration
+          for Headroom.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of HeadroomConfig
+            properties:
+              deadband:
+                description: Deadband holds the grow/shrink hysteresis thresholds.
+                properties:
+                  growPercent:
+                    default: 10
+                    description: GrowPercent skips a limit increase within this percent
+                      of the current limit.
+                    format: int32
+                    maximum: 100
+                    minimum: 0
+                    type: integer
+                  shrinkPercent:
+                    default: 5
+                    description: |-
+                      ShrinkPercent skips a limit decrease within this percent of the current
+                      limit. Tighter than grow: stale-generous limits are a fairness bug while
+                      stale-tight limits are only an efficiency bug (§6.2b).
+                    format: int32
+                    maximum: 100
+                    minimum: 0
+                    type: integer
+                type: object
+              debouncePeriod:
+                default: 2s
+                description: |-
+                  DebouncePeriod collapses a burst of scheduling events on one node into a
+                  single recompute (§6.2).
+                type: string
+              dryRun:
+                default: true
+                description: |-
+                  DryRun computes targets, updates annotations and metrics, but issues no
+                  resize patches. Defaults true so a fresh install is safe and observable
+                  before it is allowed to act (§9.3).
+                type: boolean
+              excludedNamespaces:
+                default:
+                - kube-system
+                description: ExcludedNamespaces are never managed regardless of labels.
+                items:
+                  type: string
+                type: array
+              maxMultiplier:
+                anyOf:
+                - type: integer
+                - type: string
+                default: "10"
+                description: MaxMultiplier caps a limit at request × this value; "0"
+                  disables (§5.3).
+                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                x-kubernetes-int-or-string: true
+              minBurstFloor:
+                anyOf:
+                - type: integer
+                - type: string
+                default: "1"
+                description: |-
+                  MinBurstFloor is the absolute burst floor for tiny requests, applied as
+                  min(this, equalShareOfSlack) so it collapses under contention (§5.2).
+                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                x-kubernetes-int-or-string: true
+              namespaceSelector:
+                description: |-
+                  NamespaceSelector selects namespaces whose pods are eligible. When unset,
+                  the controller defaults to the label kube-headroom.dev/enabled=true (§6.3).
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              policy:
+                default: Proportional
+                description: Policy selects the slack-distribution policy.
+                enum:
+                - Proportional
+                type: string
+              quantum:
+                anyOf:
+                - type: integer
+                - type: string
+                default: 10m
+                description: |-
+                  Quantum rounds computed targets to a multiple of this to avoid arithmetic
+                  churn (§5.3).
+                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                x-kubernetes-int-or-string: true
+              rateLimits:
+                description: RateLimits bounds API-server write pressure.
+                properties:
+                  clientBurst:
+                    default: 100
+                    description: ClientBurst is the controller's global client burst
+                      budget.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  clientQPS:
+                    default: 50
+                    description: ClientQPS is the controller's global Kubernetes client
+                      QPS budget.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                  perNodePatchesPerSecond:
+                    default: 10
+                    description: PerNodePatchesPerSecond caps the resize patches issued
+                      per node.
+                    format: int32
+                    minimum: 1
+                    type: integer
+                type: object
+            type: object
+          status:
+            description: status defines the observed state of HeadroomConfig
+            properties:
+              conditions:
+                description: conditions represent the current state of the HeadroomConfig
+                  resource.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              managedNodes:
+                description: ManagedNodes is the number of nodes with at least one
+                  managed pod.
+                format: int32
+                type: integer
+              managedPods:
+                description: ManagedPods is the number of pods currently under management.
+                format: int32
+                type: integer
+              observedGeneration:
+                description: ObservedGeneration is the .metadata.generation last reconciled.
+                format: int64
+                type: integer
+            type: object
+        required:
+        - spec
+        type: object
+        x-kubernetes-validations:
+        - message: HeadroomConfig is a singleton; the only allowed name is 'cluster'
+          rule: self.metadata.name == 'cluster'
+    served: true
+    storage: true
+    subresources:
+      status: {}
