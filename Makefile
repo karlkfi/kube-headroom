@@ -63,6 +63,33 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
+.PHONY: check
+check: lint verify-generate backlog-lint shellcheck doc-links test ## Run all fast pre-review checks (mirrors CI). Green here == green in CI.
+
+.PHONY: verify-generate
+verify-generate: manifests generate ## Fail if generated manifests/code are out of date.
+	@git diff --exit-code -- config api PROJECT || { \
+		echo "ERROR: generated files are out of date. Run 'make manifests generate' and commit the result."; \
+		exit 1; \
+	}
+
+.PHONY: backlog-lint
+backlog-lint: ## Lint the docs/STATUS.md backlog.
+	bash scripts/lint-backlog.sh docs/STATUS.md
+
+.PHONY: govulncheck
+govulncheck: ## Report known vulnerabilities in dependencies.
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+.PHONY: shellcheck
+shellcheck: ## Lint shell scripts and git hooks (skips locally if shellcheck is absent; CI runs it strictly).
+	@command -v shellcheck >/dev/null 2>&1 || { echo "shellcheck not installed; skipping (CI enforces it)."; exit 0; }
+	shellcheck --severity=warning scripts/*.sh .githooks/*
+
+.PHONY: doc-links
+doc-links: ## Check Markdown for broken relative links/anchors (offline, no external deps).
+	python3 scripts/check-doc-links.py
+
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
 # kubectl kuberc is disabled by default for test isolation; enable with:
