@@ -12,7 +12,7 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q1"></a>Q1 | Scaffold the operator project | `infra` | 🔲 | S | kubebuilder v4 layout, `HeadroomConfig` CRD (§9.3), leader-elected manager, RBAC (patch `pods/resize` only), Makefile/Dockerfile. Annotation prefix as one constant (default `headroom.dev`). |
+| <a id="Q1"></a>Q1 | Scaffold the operator project | `infra` | 🔲 | S | kubebuilder v4 layout, `HeadroomConfig` CRD (§9.3), leader-elected manager, RBAC (patch `pods/resize` only), Makefile/Dockerfile. Annotation prefix as one constant (`kube-headroom.dev`). |
 | <a id="Q2"></a>Q2 | Phase 0 resize spikes on kind ≥1.35 | `spike` | 🔲 | S | §10: CPU limit-only resize latency; can a limit be *added* to a Burstable pod; resize vs ResourceQuota `limits.cpu` admission; VPA `RequestsOnly` coexistence. Each answer changes eligibility or docs. |
 | <a id="Q4"></a>Q4 | [Node reconciler](plan/node-reconciler.md) | `controller` | 🚫 | M | Blocked by [Q1](#Q1). Pod/node informers keyed on `spec.nodeName`, debounce, hysteresis, per-node rate-limited resize-subresource patching. Wires the pure policy core into controller-runtime (§6.2). |
 | <a id="Q5"></a>Q5 | Pod eligibility + dry-run mode | `controller` | 🚫 | S | Blocked by [Q1](#Q1). §6.3 eligibility gates (namespace opt-in, Burstable, resizePolicy≠RestartContainer, exclusions); dry-run computes+annotates+meters without patching (§9.3, ship first). |
