@@ -4,6 +4,8 @@ name: Backlog
 # cloned with the repo — this enforces the same format on pushes and PRs.
 on:
   push:
+    branches:
+      - main
     paths:
       - docs/STATUS.md
       - scripts/lint-backlog.sh
