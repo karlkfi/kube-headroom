@@ -213,10 +213,7 @@ func TestInvariant_TargetWithinBounds(t *testing.T) {
 			}
 			for _, d := range ds {
 				p := byKey[d.Key]
-				hi := min(alloc, int64(float64(p.RequestMilli)*cfg.MaxMultiplier))
-				if hi < p.RequestMilli {
-					hi = p.RequestMilli
-				}
+				hi := max(min(alloc, int64(float64(p.RequestMilli)*cfg.MaxMultiplier)), p.RequestMilli)
 				if d.TargetLimitMilli < p.RequestMilli {
 					t.Errorf("alloc=%d n=%d: %s target %d < request %d", alloc, n, d.Key, d.TargetLimitMilli, p.RequestMilli)
 				}
