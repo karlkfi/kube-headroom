@@ -6,6 +6,16 @@ GA in-place pod resize subresource. Requests-driven (deterministic, low-churn),
 CPU-only by design, opt-in per namespace. Full design: `docs/design.md` (until
 adopted, `tmp/project-plan.md`).
 
+## Workflow
+
+- **Feature branches + PRs**, never direct commits to `main`. Branch per task
+  (`feat/…`, `chore/…`, `fix/…`), push, open a PR with `gh pr create`; Karl
+  merges. CI (lint, test, e2e, backlog) runs on the PR.
+- **Conventional commits** (`feat:`, `fix:`, `chore:`, `docs:`, `test:`).
+- **No licensing** — do not add license/copyright headers or a `LICENSE` file
+  until Karl explicitly asks. `hack/boilerplate.go.txt` is intentionally empty
+  so generated files stay header-free; keep it that way.
+
 ## Backlog
 
 Work is tracked in `docs/STATUS.md` (repo-local backlog, priority-ordered
@@ -52,3 +62,22 @@ kubecontext.
 
 > `AGENTS.md` is a symlink to this file — one source of truth for every agent
 > tool. Edit `CLAUDE.md`.
+
+## Commands
+
+| Task | Command |
+|---|---|
+| Policy unit tests (fast, no cluster) | `go test ./internal/policy/` |
+| Full unit tests (envtest) | `make test` |
+| Regenerate CRDs/RBAC + deepcopy | `make manifests generate` |
+| Build the manager binary | `make build` |
+| Lint | `make lint` (fix: `make lint-fix`) |
+| Run against current kubecontext | `make run` |
+| e2e on a dedicated kind cluster | `make setup-test-e2e test-e2e` |
+| Apply the sample config | `kubectl apply -k config/samples` |
+| Lint the backlog | `bash scripts/lint-backlog.sh docs/STATUS.md` |
+
+**Verify a change** end-to-end before opening a PR: `make test` for anything
+touching Go, plus `make manifests generate` (and commit the regenerated files)
+whenever API markers change. The sample (`name: cluster`) exercises the
+singleton CEL rule.

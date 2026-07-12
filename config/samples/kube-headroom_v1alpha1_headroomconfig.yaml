@@ -4,6 +4,28 @@ metadata:
   labels:
     app.kubernetes.io/name: kube-headroom
     app.kubernetes.io/managed-by: kustomize
-  name: headroomconfig-sample
+  # Singleton: the name MUST be "cluster" (enforced by a CEL validation rule).
+  name: cluster
 spec:
-  # TODO(user): Add fields here
+  policy: Proportional
+  # Start in dry-run: compute targets, annotate pods, and emit metrics, but
+  # issue no resize patches. Flip to false once you trust the recommendations.
+  dryRun: true
+  # Manage pods only in namespaces labeled kube-headroom.dev/enabled=true.
+  namespaceSelector:
+    matchLabels:
+      kube-headroom.dev/enabled: "true"
+  excludedNamespaces:
+    - kube-system
+  # Remaining fields shown at their defaults for discoverability.
+  minBurstFloor: "1"
+  maxMultiplier: "10"
+  quantum: "10m"
+  deadband:
+    growPercent: 10
+    shrinkPercent: 5
+  debouncePeriod: 2s
+  rateLimits:
+    perNodePatchesPerSecond: 10
+    clientQPS: 50
+    clientBurst: 100

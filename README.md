@@ -1,119 +1,107 @@
-# kube-headroom
-// TODO(user): Add simple overview of use/purpose
+# Headroom
 
-## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+**Dynamic CPU limits proportional to node slack — recomputed on scheduling
+events, applied via the in-place pod resize subresource.**
 
-## Getting Started
+On an empty node a pod's CPU limit approaches the node's allocatable CPU (no
+pointless throttling). As the node fills with requests, limits converge toward
+each pod's request (predictable, request-proportional fair sharing). The limit
+is derived from **requests** (booked capacity), not live usage, so it changes
+only on scheduling events — deterministic, low-churn, and debuggable.
 
-### Prerequisites
-- go version v1.24.6+
-- docker version 17.03+.
-- kubectl version v1.11.3+.
-- Access to a Kubernetes v1.11.3+ cluster.
+> **Status: early development.** The policy core is implemented and tested; the
+> controller is in progress and Headroom is **not yet deployable**. Roadmap and
+> priorities live in [docs/STATUS.md](docs/STATUS.md).
 
-### To Deploy on the cluster
-**Build and push your image to the location specified by `IMG`:**
+## The problem
 
-```sh
-make docker-build docker-push IMG=<some-registry>/kube-headroom:tag
+Static CPU limits force a bad choice in multi-tenant clusters:
+
+- **Tight limit** → the pod is throttled by CFS quota even when the node is
+  idle (and CFS throttling is notoriously hard to debug).
+- **Generous / no limit** → no isolation ceiling; one tenant's spike degrades
+  neighbors, with no predictable behavior under contention.
+- **requests == limits (Guaranteed)** → wastes the gap between average and peak
+  usage; nodes bin-pack poorly.
+
+The kernel already handles part of this: CPU **requests** map to cgroup
+`cpu.weight`, which gives work-conserving, request-proportional sharing under
+contention *without throttling*. The only thing that throttles is the quota
+(`cpu.max`, i.e. the limit). So the real question is: **what should the ceiling
+be right now?**
+
+## How it works
+
+Headroom's answer: your ceiling is your request plus your proportional share of
+the node's *unbooked* capacity.
+
+```
+slack(node)  = allocatable_cpu − Σ requests(all pods on node)
+limit(pod_i) = request_i × (1 + slack / Σ requests(managed pods))
 ```
 
-**NOTE:** This image ought to be published in the personal registry you specified.
-And it is required to have access to pull the image from the working environment.
-Make sure you have the proper permission to the registry if the above commands don’t work.
+with a slack-aware floor (so tiny requests still get useful burst on empty
+nodes) and per-pod caps. When the node is fully booked, slack is 0 and every
+limit collapses to its request — exactly what `cpu.weight` would enforce under
+contention anyway, so behavior is coherent at both extremes.
 
-**Install the CRDs into the cluster:**
+The limit is applied through Kubernetes' **in-place pod resize** subresource
+(GA in 1.35): a live cgroup write, no container restart. The pod spec stays the
+source of truth — `kubectl get pod` shows the actually-enforced limit.
 
-```sh
-make install
-```
+## Key properties
 
-**Deploy the Manager to the cluster with the image specified by `IMG`:**
+- **Requests-driven, not usage-driven** — targets change only when a node's
+  booking changes. Deterministic, auditable, no metric-pipeline dependency, no
+  feedback oscillation.
+- **Safe by construction** — if the controller stops, limits freeze at their
+  last values; `cpu.weight` still enforces fair sharing. *No failure mode is
+  worse than not running Headroom.*
+- **CPU-only, by design** — CPU is compressible (exceeding the ceiling
+  throttles); memory/GPU/storage are not (they kill), so the "ceiling floats
+  with slack" model only makes sense for CPU.
+- **Opt-in per namespace**, safe to run alongside unmanaged workloads.
+- **Debuggable** — every limit change is explainable from observable inputs
+  (annotation + event + metrics).
 
-```sh
-make deploy IMG=<some-registry>/kube-headroom:tag
-```
+## When to use it — and when not to
 
-> **NOTE**: If you encounter RBAC errors, you may need to grant yourself cluster-admin
-privileges or be logged in as admin.
+Headroom earns its complexity only where CPU **ceilings are actually required**:
+hostile or contractual multi-tenancy, bounding the blast radius of runaway
+workloads, and predictable per-tenant capacity planning.
 
-**Create instances of your solution**
-You can apply the samples (examples) from the config/sample:
+On a trusted, single-tenant cluster, simply **omitting CPU limits** (or running
+kubelet with `--cpu-cfs-quota=false`) delivers most of the benefit with zero
+moving parts — `cpu.weight` provides work-conserving proportional sharing and
+nothing ever throttles. If that describes your cluster, you don't need Headroom.
 
-```sh
-kubectl apply -k config/samples/
-```
+## Configuration
 
->**NOTE**: Ensure that the samples has default values to test it out.
+A single cluster-scoped `HeadroomConfig` (name `cluster`) holds the policy: the
+burst floor, max multiplier, deadband/hysteresis, debounce, rate limits, and the
+namespace selector. It **defaults to `dryRun: true`** — Headroom computes
+targets, annotates pods, and emits metrics, but issues no resize patches until
+you flip it off. See [config/samples](config/samples/) for a fully-populated
+example.
 
-### To Uninstall
-**Delete the instances (CRs) from the cluster:**
+## Non-goals
 
-```sh
-kubectl delete -k config/samples/
-```
+Memory/GPU/storage management, usage-based reclamation, managing Guaranteed or
+BestEffort pods, and any influence on scheduling (Headroom only adjusts limits
+*after* placement). Windows nodes and nodes using static CPU/Memory Manager
+policies are structurally excluded (in-place resize is unavailable there).
 
-**Delete the APIs(CRDs) from the cluster:**
+## Development
 
-```sh
-make uninstall
-```
-
-**UnDeploy the controller from the cluster:**
-
-```sh
-make undeploy
-```
-
-## Project Distribution
-
-Following the options to release and provide this solution to the users.
-
-### By providing a bundle with all YAML files
-
-1. Build the installer for the image built and published in the registry:
-
-```sh
-make build-installer IMG=<some-registry>/kube-headroom:tag
-```
-
-**NOTE:** The makefile target mentioned above generates an 'install.yaml'
-file in the dist directory. This file contains all the resources built
-with Kustomize, which are necessary to install this project without its
-dependencies.
-
-2. Using the installer
-
-Users can just run 'kubectl apply -f <URL for YAML BUNDLE>' to install
-the project, i.e.:
+Requires Go (see `go.mod`), Docker, and kind ≥ 1.35 for e2e. See
+[CLAUDE.md](CLAUDE.md) for the full command reference and conventions.
 
 ```sh
-kubectl apply -f https://raw.githubusercontent.com/<org>/kube-headroom/<tag or branch>/dist/install.yaml
+go test ./internal/policy/   # fast policy unit tests (no cluster)
+make test                    # full unit tests (envtest)
+make manifests generate      # regenerate CRDs/RBAC/deepcopy after API changes
+make run                     # run the manager against the current kubecontext
 ```
 
-### By providing a Helm Chart
-
-1. Build the chart using the optional helm plugin
-
-```sh
-kubebuilder edit --plugins=helm/v2-alpha
-```
-
-2. See that a chart was generated under 'dist/chart', and users
-can obtain this solution from there.
-
-**NOTE:** If you change the project, you need to update the Helm Chart
-using the same command above to sync the latest changes. Furthermore,
-if you create webhooks, you need to use the above command with
-the '--force' flag and manually ensure that any custom configuration
-previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
-is manually re-applied afterwards.
-
-## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
-
-**NOTE:** Run `make help` for more information on all potential `make` targets
-
-More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
-
+The full design document is being adopted into `docs/design.md` (tracked in the
+backlog); until then, `docs/plan/` holds plan docs for in-flight work.
