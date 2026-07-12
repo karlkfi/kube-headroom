@@ -34,3 +34,21 @@ kubebuilder v4 project. API group / annotation prefix: **`kube-headroom.dev`**
 Build: `make manifests generate` after editing API types; `make build` /
 `make test` (envtest). `make run` runs the manager against the current
 kubecontext.
+
+## Working in this repo (kubebuilder v4)
+
+- **Never hand-edit generated files** — they are overwritten by `make`:
+  `**/zz_generated.*.go`, `config/crd/bases/*.yaml`, `config/rbac/role.yaml`,
+  `config/webhook/manifests.yaml`, and `PROJECT`. Change the source markers
+  instead, then regenerate.
+- **After editing `api/**/_types.go` or markers**, run `make manifests generate`.
+  After editing `.go`, run `make test` (unit tests use envtest — a real
+  apiserver + etcd; Ginkgo/Gomega, see `suite_test.go`).
+- **Don't delete `// +kubebuilder:scaffold:*` comments** — the CLI injects code
+  at them. Scaffold new APIs/webhooks with `kubebuilder create api|webhook`
+  rather than creating files by hand.
+- **e2e requires a dedicated kind cluster** (never a real dev/prod context).
+- Full kubebuilder reference: https://book.kubebuilder.io.
+
+> `AGENTS.md` is a symlink to this file — one source of truth for every agent
+> tool. Edit `CLAUDE.md`.
