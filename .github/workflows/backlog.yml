@@ -1,0 +1,30 @@
+name: Backlog
+
+# The pre-commit hook lints docs/STATUS.md locally, but that config is not
+# cloned with the repo — this enforces the same format on pushes and PRs.
+on:
+  push:
+    paths:
+      - docs/STATUS.md
+      - scripts/lint-backlog.sh
+  pull_request:
+    paths:
+      - docs/STATUS.md
+      - scripts/lint-backlog.sh
+
+permissions: {}
+
+jobs:
+  lint:
+    permissions:
+      contents: read
+    name: Lint docs/STATUS.md
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Lint backlog
+        run: bash scripts/lint-backlog.sh docs/STATUS.md

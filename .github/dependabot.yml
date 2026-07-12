@@ -1,0 +1,20 @@
+version: 2
+updates:
+  # Go module dependencies — grouped into one PR per run to keep noise low.
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      go-modules:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
+  # GitHub Actions used by the workflows (pinned by SHA; keeps them current).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
