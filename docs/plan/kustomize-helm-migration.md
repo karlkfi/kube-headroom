@@ -35,11 +35,15 @@ drifts from the markers.
   `config/webhook/manifests.yaml`, and a `make` sync step copies those into the
   charts. Generated files are never hand-edited — the sync keeps the
   "authoritative markers" rule intact while the deploy path becomes Helm.
-- **Distribution: OCI on ghcr.io.** `helm push` both charts to
-  `oci://ghcr.io/karlkfi/charts`; consumers `helm install ... oci://…`. No
-  gh-pages index to maintain.
-- **Makefile deploy targets are rewritten to Helm** (kustomize deploy path
-  retired — see Makefile below).
+- **Distribution: OCI on ghcr.io, charts under a dedicated sub-namespace.**
+  Image at `ghcr.io/karlkfi/kube-headroom`; charts pushed to
+  `oci://ghcr.io/karlkfi/charts` (→ `…/charts/kube-headroom`,
+  `…/charts/kube-headroom-crds`) so image and chart never share a package
+  coordinate. Consumers `helm install … oci://…`. No gh-pages index to
+  maintain. (`IMG` is still the placeholder `controller:latest`; pinning it to
+  the ghcr path is part of this work.)
+- **Makefile deploy targets are rewritten to Helm; the kustomize deploy path is
+  deleted outright** — no deprecation window (see Makefile below).
 
 ## Scope
 
@@ -81,13 +85,14 @@ drifts from the markers.
   - `helm-lint` → `helm lint` both charts; `helm-template` →
     `helm template | kubeconform`; `helm-package` → package both;
     `helm-push` → `helm push` both to `oci://ghcr.io/karlkfi/charts`.
-  - **Repoint the existing targets:** `install` → `helm upgrade --install` the
-    CRD chart; `deploy` → `helm upgrade --install` the operator chart (with
+  - **Delete the kustomize deploy targets and replace their names with Helm
+    implementations:** `install` → `helm upgrade --install` the CRD chart;
+    `deploy` → `helm upgrade --install` the operator chart (with
     `--set image.tag=…` replacing `kustomize edit set image`);
     `undeploy` → `helm uninstall`; `build-installer` → `helm template` the
-    rendered YAML into `dist/`. Drop the `KUSTOMIZE` binary dep from the deploy
-    targets (controller-gen still generates; kustomize is no longer on the
-    deploy path).
+    rendered YAML into `dist/`. No `kustomize build`-based deploy path survives;
+    drop the `KUSTOMIZE` binary dep from every deploy target (controller-gen
+    still generates manifests into `config/**`, `helm-sync` copies them).
 - **CI:** `helm lint` + `helm template | kubeconform` on every PR (optionally
   chart-testing `ct`); switch the e2e path to `helm install`; a release job
   `helm push`es both charts to ghcr on tag.
@@ -134,8 +139,7 @@ drifts from the markers.
 
 ## Open questions (for Karl)
 
-1. OCI namespace — `oci://ghcr.io/karlkfi/charts` assumed; confirm the exact
-   repo path and whether the charts share it with (or sit beside) the manager
-   image `ghcr.io/karlkfi/kube-headroom`.
-2. Keep the retired kustomize `deploy`/`install` invocable during a deprecation
-   window, or delete them outright once Helm parity is verified?
+1. Confirm the ghcr owner/path — the plan assumes image
+   `ghcr.io/karlkfi/kube-headroom` and charts `oci://ghcr.io/karlkfi/charts`.
+   Override the owner or the `charts` sub-namespace here if you want something
+   else; nothing is pinned yet.
