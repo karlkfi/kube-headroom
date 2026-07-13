@@ -1,3 +1,7 @@
 resources:
 - allow-webhook-traffic.yaml
-- allow-metrics-traffic.yaml
+# allow-metrics-traffic.yaml is intentionally held back: it restricts the
+# /metrics endpoint to namespaces labeled 'metrics: enabled', which requires a
+# labeling decision (and matching e2e setup) that is out of scope for the
+# webhook fix (Q19). Re-add it here once that is settled.
+# - allow-metrics-traffic.yaml
