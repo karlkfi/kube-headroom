@@ -91,11 +91,19 @@ func PodCPURequestMilli(rcs []ResizableContainer) int64 {
 
 // PodCurrentLimitMilli is the pod's aggregate enforced CPU limit, or 0 when the
 // pod is not fully bounded. A pod is treated as "unset" (0) unless *every*
-// resizable container already carries a CPU limit — a partially-limited pod is
+// managed container already carries a CPU limit — a partially-limited pod is
 // effectively unbounded and must have a limit set (§6.2, policy CurrentLimit=0).
+//
+// Request-less containers are skipped: Headroom never sets a limit on them (§5.4,
+// splitLimit omits them), so their perpetually-unset limit must not drag the
+// aggregate to 0 — that would make an otherwise-bounded pod look unlimited every
+// reconcile and re-patch it forever, breaking the §7 zero-churn guarantee (Q24).
 func PodCurrentLimitMilli(rcs []ResizableContainer) int64 {
 	var sum int64
 	for _, c := range rcs {
+		if c.RequestMilli <= 0 {
+			continue // not managed (no burst basis); its limit does not bound the pod
+		}
 		if c.LimitMilli <= 0 {
 			return 0
 		}

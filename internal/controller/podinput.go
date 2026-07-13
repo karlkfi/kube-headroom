@@ -27,6 +27,12 @@ func buildPodInput(pod *corev1.Pod, rcs []eligibility.ResizableContainer, manage
 // limits sum exactly to the pod target and each stays at or above its own
 // request. Containers are returned in input order; the largest fractional
 // remainders receive the leftover milli-cores.
+//
+// A container with zero CPU request is omitted from the result entirely: it
+// receives no computed burst and its limit is left untouched (§5.4), matching
+// the birth-limit webhook. Assigning it a limit of 0 would write limits.cpu:"0",
+// which reads back as "unset" and makes the pod look unbounded forever — a
+// re-patch every debounce cycle that breaks the §7 zero-churn guarantee (Q24).
 func splitLimit(targetMilli int64, rcs []eligibility.ResizableContainer) map[string]int64 {
 	out := make(map[string]int64, len(rcs))
 	totalReq := eligibility.PodCPURequestMilli(rcs)
@@ -42,6 +48,9 @@ func splitLimit(targetMilli int64, rcs []eligibility.ResizableContainer) map[str
 	var assigned int64
 	rems := make([]rem, 0, len(rcs))
 	for i, c := range rcs {
+		if c.RequestMilli <= 0 {
+			continue // §5.4: request-less container gets no burst; leave its limit untouched
+		}
 		exact := float64(targetMilli) * float64(c.RequestMilli) / float64(totalReq)
 		base := max(int64(exact), c.RequestMilli) // floor, never below own request
 		out[c.Name] = base

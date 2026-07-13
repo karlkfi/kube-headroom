@@ -66,7 +66,7 @@ func makeManagedNamespace() {
 func makeBurstablePod(ns, name, node string, reqMilli, limMilli int64) {
 	c := corev1.Container{
 		Name:  cApp,
-		Image: "busybox:1.36",
+		Image: imgBusybox,
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{corev1.ResourceCPU: *resource.NewMilliQuantity(reqMilli, resource.DecimalSI)},
 		},
@@ -81,12 +81,32 @@ func makeBurstablePod(ns, name, node string, reqMilli, limMilli int64) {
 	Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 }
 
+// makeBurstablePodWithSidecar creates a Burstable pod bound to a node with an app
+// container carrying the given CPU request plus a request-less sidecar (a common
+// shape: an app plus a request-less agent/logging sidecar). The pod is Burstable
+// on the strength of the app request; the sidecar has neither request nor limit.
+func makeBurstablePodWithSidecar(ns, name, node string, reqMilli int64) {
+	app := corev1.Container{
+		Name:  cApp,
+		Image: imgBusybox,
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{corev1.ResourceCPU: *resource.NewMilliQuantity(reqMilli, resource.DecimalSI)},
+		},
+	}
+	sidecar := corev1.Container{Name: "agent", Image: imgBusybox}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
+		Spec:       corev1.PodSpec{Containers: []corev1.Container{app, sidecar}, NodeName: node},
+	}
+	Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+}
+
 // makeOwnedBurstablePod is makeBurstablePod plus a single ownerReference, used to
 // exercise the ExcludedOwners gate (§6.3).
 func makeOwnedBurstablePod(ns, name, node string, reqMilli int64, owner metav1.OwnerReference) {
 	c := corev1.Container{
 		Name:  cApp,
-		Image: "busybox:1.36",
+		Image: imgBusybox,
 		Resources: corev1.ResourceRequirements{
 			Requests: corev1.ResourceList{corev1.ResourceCPU: *resource.NewMilliQuantity(reqMilli, resource.DecimalSI)},
 		},
@@ -326,6 +346,41 @@ var _ = Describe("NodeReconciler", func() {
 
 		var after corev1.Pod
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: nsA, Name: "steady"}, &after)).To(Succeed())
+		Expect(after.ResourceVersion).To(Equal(rv), "steady-state reconcile should issue no patch")
+	})
+
+	It("skips a request-less sidecar and reaches steady state (Q24)", func() {
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		// App requests 1000m; the request-less sidecar carries neither request nor
+		// limit. Solo on an 8-core node, the app's target is 8000m.
+		makeBurstablePodWithSidecar(nsA, "sidecar", node, 1000)
+
+		reconcileNode(node)
+		Eventually(func() int64 { return podLimitMilli(nsA, "sidecar") }).Should(Equal(int64(8000)))
+
+		var applied corev1.Pod
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: nsA, Name: "sidecar"}, &applied)).To(Succeed())
+		// The app container is limited; the request-less sidecar must be left
+		// untouched — no limits.cpu written (§5.4). A limits.cpu:"0" here would read
+		// back as unset and re-patch every cycle.
+		Expect(applied.Spec.Containers[0].Name).To(Equal(cApp))
+		Expect(applied.Spec.Containers[0].Resources.Limits.Cpu().MilliValue()).To(Equal(int64(8000)))
+		Expect(applied.Spec.Containers[1].Name).To(Equal("agent"))
+		_, hasLimit := applied.Spec.Containers[1].Resources.Limits[corev1.ResourceCPU]
+		Expect(hasLimit).To(BeFalse(), "request-less sidecar must have no limits.cpu")
+
+		rv := applied.ResourceVersion
+
+		// Re-reconciling an unchanged node must issue zero patches: the app is at
+		// target and the sidecar is (correctly) skipped, so the pod reads as bounded.
+		reconcileNode(node)
+		reconcileNode(node)
+
+		var after corev1.Pod
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: nsA, Name: "sidecar"}, &after)).To(Succeed())
 		Expect(after.ResourceVersion).To(Equal(rv), "steady-state reconcile should issue no patch")
 	})
 

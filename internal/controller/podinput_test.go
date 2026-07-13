@@ -17,6 +17,10 @@ const (
 	nsA  = "team-a"
 	cApp = "app"
 
+	// imgBusybox is the placeholder image for envtest pod fixtures (no kubelet
+	// pulls it; the apiserver only records the spec).
+	imgBusybox = "busybox:1.36"
+
 	// osWindows mirrors the eligibility package's node OS sentinel for the
 	// envtest node fixtures (the production constant is unexported there).
 	osWindows = "windows"
@@ -59,6 +63,16 @@ func TestSplitLimit(t *testing.T) {
 			rcs:    []eligibility.ResizableContainer{{Name: "a", RequestMilli: 100}, {Name: "b", RequestMilli: 200}},
 			// exact: a=333.33 b=666.66 -> floors 333/666 leftover 1 -> b (bigger frac)
 			want: map[string]int64{"a": 333, "b": 667},
+		},
+		{
+			// App plus a request-less sidecar/agent (Q24): the sidecar is omitted
+			// entirely so applyResize never writes limits.cpu:"0" on it (§5.4). The
+			// app absorbs the whole target — the split among request-bearing
+			// containers is unchanged.
+			name:   "request-less sidecar is omitted, app gets the whole target",
+			target: 8000,
+			rcs:    []eligibility.ResizableContainer{{Name: cApp, RequestMilli: 1000}, {Name: "agent", RequestMilli: 0}},
+			want:   map[string]int64{cApp: 8000},
 		},
 	}
 	for _, tc := range tests {

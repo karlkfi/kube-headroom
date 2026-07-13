@@ -146,6 +146,13 @@ func TestPodCurrentLimitMilli(t *testing.T) {
 	if got := PodCurrentLimitMilli(partial); got != 0 {
 		t.Errorf("partially-limited pod = %d, want 0", got)
 	}
+	// A request-less sidecar carries no managed limit (§5.4), so its perpetually
+	// unset limit must not drag the aggregate to 0 — the app container's limit
+	// alone bounds the pod (Q24 steady-state guarantee).
+	withSidecar := ResizableContainers(burstablePod("sidecar", container("app", 100, 800), container("agent", 0, 0)))
+	if got := PodCurrentLimitMilli(withSidecar); got != 800 {
+		t.Errorf("app+request-less-sidecar pod = %d, want 800", got)
+	}
 }
 
 func TestNamespaceManaged(t *testing.T) {
