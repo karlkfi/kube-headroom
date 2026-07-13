@@ -12,7 +12,7 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q21"></a>Q21 | [Migrate packaging from Kustomize to Helm](plan/kustomize-helm-migration.md) | `infra` | 🔲 | L | Two hand-authored Helm charts (CRD + operator) published to ghcr OCI, replacing the `config/` kustomize deploy path; rewrite the Makefile deploy targets to `helm`. Start after the open `config/` fixes (Q17–Q20) settle (plan doc). |
+| <a id="Q21"></a>Q21 | [Migrate packaging from Kustomize to Helm](plan/kustomize-helm-migration.md) | `infra` | 🔲 | L | Two hand-authored Helm charts (CRD + operator) published to ghcr OCI, replacing the `config/` kustomize deploy path; rewrite the Makefile deploy targets to `helm`. Base `config/` fixes (Q17–Q20) have landed; ready to start (plan doc). |
 
 ## Deferred
 
