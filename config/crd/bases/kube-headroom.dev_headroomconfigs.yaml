@@ -119,7 +119,7 @@ spec:
               namespaceSelector:
                 description: |-
                   NamespaceSelector selects namespaces whose pods are eligible. When unset,
-                  the controller defaults to the label kube-headroom.dev/enabled=true (§6.3).
+                  the controller defaults to the label kube-headroom.dev/mode=managed (§6.3).
                 properties:
                   matchExpressions:
                     description: matchExpressions is a list of label selector requirements.

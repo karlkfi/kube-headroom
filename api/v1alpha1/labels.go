@@ -8,12 +8,23 @@ const GroupName = "kube-headroom.dev"
 
 // Label and annotation keys (design doc §6.3, §8.1), all derived from GroupName.
 const (
-	// LabelEnabled on a Namespace opts its pods in ("true").
-	LabelEnabled = GroupName + "/enabled"
-	// LabelManaged on a Pod opts it out ("false") even in an enabled namespace.
-	LabelManaged = GroupName + "/managed"
+	// LabelMode selects Headroom's management mode for an object. On a
+	// Namespace, ModeManaged opts its pods in; on a Pod, ModeUnmanaged opts it
+	// out even inside a managed namespace. The values are enum keywords, not
+	// booleans, so unquoted YAML 1.1 tokens (`true`/`false`/`yes`/`no`) can't
+	// coerce and silently change meaning. The gate is fail-closed: any absent
+	// or unrecognized value means "not managed".
+	LabelMode = GroupName + "/mode"
 	// AnnotationStatus carries the per-pod computed status JSON (§8.1).
 	AnnotationStatus = GroupName + "/status"
 	// AnnotationMaxCPU is an optional per-pod ceiling in milli/quantity form (§5.3).
 	AnnotationMaxCPU = GroupName + "/max-cpu"
+)
+
+// Enum-keyword values for LabelMode (design doc §6.3).
+const (
+	// ModeManaged on a Namespace enrolls its pods for CPU-limit management.
+	ModeManaged = "managed"
+	// ModeUnmanaged on a Pod excludes it, overriding its namespace enrollment.
+	ModeUnmanaged = "unmanaged"
 )
