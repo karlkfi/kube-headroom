@@ -15,7 +15,6 @@ the top of the Queue.
 | <a id="Q17"></a>Q17 | Narrow controller RBAC on headroomconfigs | `security` | 🔲 | S | ClusterRole grants full CRUD on `headroomconfigs`, but the controller only reads the singleton. Narrow the marker in `headroomconfig_controller.go` to `get;list;watch`+`/status`, regenerate. |
 | <a id="Q18"></a>Q18 | Bound the birth-limit multiplier | `webhook` `security` | 🔲 | S | CRD multiplier fields have no max and webhook `seedBirthLimits` applies `request × multiplier` uncapped. Add validation ceilings and clamp seeding to `MaxMultiplier`. |
 | <a id="Q19"></a>Q19 | Fix allow-webhook-traffic NetworkPolicy | `infra` `security` | 🔲 | S | Policy admits ingress only from `webhook: enabled` namespaces, but apiserver→webhook traffic is not, so enabling it (now commented out) breaks admission. Fix the selector before wiring it in. |
-| <a id="Q13"></a>Q13 | SECURITY.md + private vuln reporting | `security` | 🔲 | S | Add `SECURITY.md` and enable GitHub private vulnerability reporting; note the no-security-regression expectation. Low urgency (pre-release). |
 | <a id="Q20"></a>Q20 | Replace scaffold production defaults | `infra` | 🔲 | S | `cmd/main.go` sets `zap.Options{Development: true}` (stacktraces, non-JSON); set false for prod. Document the metrics cert-manager wiring so scrapers aren't stuck on self-signed certs. |
 
 ## Deferred
