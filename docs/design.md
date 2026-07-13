@@ -401,7 +401,7 @@ Spec fields: `policy: Proportional` (enum for future), `minBurstFloor`, `maxMult
 2. Set nothing if the container's `resizePolicy` for CPU is `RestartContainer` — treat as ineligible (a limit change must never restart a workload).
 3. Informer cache transform to strip pod fields (keep metadata, nodeName, phase, QoS, container resources, resizePolicy, ownerRefs).
 4. All timing knobs jittered.
-5. RBAC: get/list/watch pods+nodes+namespaces+limitranges+vpa; patch on `pods/resize`; events create. Nothing else — notably no pod update/delete.
+5. RBAC: get/list/watch pods+nodes+namespaces+limitranges+vpa; patch on `pods/resize` (the CPU limit) **and** patch on `pods` (metadata only, for the `kube-headroom.dev/status` annotation of §8.1); events create. Nothing else — notably no pod `update`/`delete`, and the `pods` patch never touches any field but the status annotation.
 
 ---
 

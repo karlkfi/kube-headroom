@@ -64,6 +64,18 @@ operator who sees `CPULimitAdjusted` in `kubectl describe` can find
 rewrite a `Reason` string casually — it is part of the contract, like an API
 field.
 
+Emit through the **events/v1 recorder**, not the deprecated core one. Use
+`mgr.GetEventRecorder(name)` (returns `k8s.io/client-go/tools/events`'s
+`EventRecorder`) and its `Eventf(regarding, related, eventtype, reason, action,
+note, args...)`. The kubebuilder scaffold still wires the older
+`mgr.GetEventRecorderFor` / `k8s.io/client-go/tools/record` API, but this repo's
+`staticcheck` gate rejects it (`SA1019`), so a reconciler that copies the
+scaffold verbatim fails CI — reach for `GetEventRecorder` from the start. The
+extra `action` argument is the events/v1 machine-readable operation verb (e.g.
+`Resizing`); keep `reason` the same PascalCase token described above. Tests use
+`events.NewFakeRecorder`, whose `.Events` channel still yields
+`"<type> <reason> <note>"` strings.
+
 ## Prometheus metrics mirror alertable conditions
 
 Every condition worth alerting on has a Prometheus counterpart, so alerts can be
