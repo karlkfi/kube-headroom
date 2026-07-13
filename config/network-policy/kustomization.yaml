@@ -1,3 +1,7 @@
 resources:
+# Both policies select the controller-manager Pod. A NetworkPolicy selecting a
+# Pod makes its ingress default-deny except for the ports it names, so the two
+# must be enabled together: the webhook policy opens 9443 and the metrics policy
+# opens 8443. Enabling only one would silently drop traffic to the other port.
 - allow-webhook-traffic.yaml
 - allow-metrics-traffic.yaml

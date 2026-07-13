@@ -47,6 +47,12 @@ var _ = Describe("Manager", Ordered, func() {
 		_, err = utils.Run(cmd)
 		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with restricted policy")
 
+		By("labeling the namespace so the metrics NetworkPolicy admits the in-namespace curl pod")
+		cmd = exec.Command("kubectl", "label", "--overwrite", "ns", namespace,
+			"metrics=enabled")
+		_, err = utils.Run(cmd)
+		Expect(err).NotTo(HaveOccurred(), "Failed to label namespace with metrics=enabled")
+
 		By("installing CRDs")
 		cmd = exec.Command("make", "install")
 		_, err = utils.Run(cmd)

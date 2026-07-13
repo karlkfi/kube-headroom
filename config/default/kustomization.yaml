@@ -27,11 +27,12 @@ resources:
 #- ../prometheus
 # [METRICS] Expose the controller manager metrics service.
 - metrics_service.yaml
-# [NETWORK POLICY] Protect the /metrics endpoint and Webhook Server with NetworkPolicy.
-# Only Pod(s) running a namespace labeled with 'metrics: enabled' will be able to gather the metrics.
-# Only CR(s) which requires webhooks and are applied on namespaces labeled with 'webhooks: enabled' will
-# be able to communicate with the Webhook Server.
-#- ../network-policy
+# [NETWORK POLICY] Protect the /metrics endpoint and Webhook Server with
+# NetworkPolicy. Both policies select the controller-manager Pod, so they are
+# enabled together (see ../network-policy/kustomization.yaml). The webhook policy
+# admits the apiserver→webhook path on 9443 (Q19); the metrics policy admits
+# 8443 only from namespaces labeled 'metrics: enabled'.
+- ../network-policy
 
 # Uncomment the patches line if you enable Metrics
 patches:
