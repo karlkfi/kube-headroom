@@ -12,7 +12,6 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q24"></a>Q24 | Zero-request containers break steady state | `controller` `policy` | 🔲 | S | Managed pod with a zero-request sidecar gets `limits.cpu:"0"` re-patched every cycle (reads back as unset), breaking §7 zero-churn. Skip request-less containers in split/apply, as the webhook does. |
 | <a id="Q21"></a>Q21 | [Migrate packaging from Kustomize to Helm](plan/kustomize-helm-migration.md) | `infra` | 🔲 | L | Two hand-authored Helm charts (CRD + operator) published to ghcr OCI, replacing the `config/` kustomize deploy path; rewrite the Makefile deploy targets to `helm`. Base `config/` fixes (Q17–Q20) have landed; ready to start (plan doc). |
 | <a id="Q25"></a>Q25 | Wire up dead config knobs (debounce, client QPS/burst) | `controller` `infra` | 🔲 | M | `debouncePeriod` and `rateLimits.clientQPS/Burst` are populated but never applied (hardcoded 2s debounce, unset rest QPS/Burst), so §8.6 write-pressure bounds are unenforced. Wire them in. |
 | <a id="Q26"></a>Q26 | Populate HeadroomConfig status (stub reconciler) | `controller` `observability` | 🔲 | M | `headroomconfig_controller.Reconcile` is the scaffold TODO, so declared status (ManagedPods, ObservedGeneration, Ready) and its printcolumn are always empty. Implement aggregation or drop the fields. |
