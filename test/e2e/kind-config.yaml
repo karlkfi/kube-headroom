@@ -1,0 +1,13 @@
+# Dedicated e2e cluster shape for Headroom (design §10).
+#
+# Two nodes: a control-plane and one worker. The slack scenarios schedule probe
+# and neighbor pods onto the worker, which — unlike the control-plane — carries
+# no apiserver/etcd/scheduler static pods, so its CPU slack is a clean function
+# of the pods the tests place there. The node image (and thus the Kubernetes
+# version, >= 1.35 for GA in-place resize) is pinned by the Makefile's
+# KIND_NODE_IMAGE via `kind create cluster --image`.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+  - role: worker

@@ -1,0 +1,27 @@
+# HeadroomConfig for the e2e suite. Unlike the config/samples default this runs
+# with dryRun: false so the controller issues real resize patches — the §10
+# exit criteria are about observed limits, not dry-run logs. debouncePeriod is
+# tightened to 1s so a neighbor's effect lands well inside the 5s SLO.
+apiVersion: kube-headroom.dev/v1alpha1
+kind: HeadroomConfig
+metadata:
+  name: cluster
+spec:
+  policy: Proportional
+  dryRun: false
+  # Manage pods only in namespaces labeled kube-headroom.dev/mode=managed; the
+  # suite labels its probe namespace and leaves the neighbor in an unmanaged one.
+  namespaceSelector:
+    matchLabels:
+      kube-headroom.dev/mode: managed
+  excludedNamespaces:
+    - kube-system
+  minBurstFloor: "1"
+  maxMultiplier: "10"
+  quantum: "10m"
+  deadband:
+    growPercent: 10
+    shrinkPercent: 5
+  debouncePeriod: 1s
+  rateLimits:
+    perNodePatchesPerSecond: 10

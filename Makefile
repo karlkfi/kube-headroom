@@ -101,6 +101,14 @@ plan-hygiene: ## Check plan docs are STATUS-referenced or archived, and unrefere
 # CertManager is installed by default; skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
 KIND_CLUSTER ?= kube-headroom-test-e2e
+# Pin the node image to a Kubernetes >= 1.35 release: in-place pod resize is GA
+# only from 1.35, and Headroom's e2e scenarios (design §10) depend on it. The
+# digest makes the cluster shape reproducible across kind versions. Bump both
+# the tag and the digest together from the kind release notes.
+KIND_NODE_IMAGE ?= kindest/node:v1.35.0@sha256:452d707d4862f52530247495d180205e029056831160e22870e37e3f6c1ac31f
+# The e2e cluster is control-plane + one worker so slack scenarios run on a node
+# free of control-plane static pods; see test/e2e/kind-config.yaml.
+KIND_CONFIG ?= test/e2e/kind-config.yaml
 
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
@@ -112,13 +120,16 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 		*"$(KIND_CLUSTER)"*) \
 			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
 		*) \
-			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
+			echo "Creating Kind cluster '$(KIND_CLUSTER)' (k8s >= 1.35)..."; \
+			$(KIND) create cluster --name $(KIND_CLUSTER) --image $(KIND_NODE_IMAGE) --config $(KIND_CONFIG) ;; \
 	esac
 
 .PHONY: test-e2e
+# CertManager is not required: config/default deploys no webhook yet (Q6), so
+# skip its install to keep the e2e run lean.
 test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) CERT_MANAGER_INSTALL_SKIP=true \
+		go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e
