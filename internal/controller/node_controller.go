@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -56,8 +56,9 @@ type NodeReconciler struct {
 	Scheme *runtime.Scheme
 
 	// Recorder emits CPULimitAdjusted / ResizeInfeasible / ResizeForbidden events
-	// on managed pods (§8.1). A nil Recorder is tolerated (events are skipped).
-	Recorder record.EventRecorder
+	// on managed pods (§8.1) via the events/v1 API. A nil Recorder is tolerated
+	// (events are skipped).
+	Recorder events.EventRecorder
 
 	// FieldManager is the SSA owner for limits.cpu (defaults to "headroom").
 	FieldManager string

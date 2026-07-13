@@ -25,6 +25,10 @@ const (
 	reasonCPULimitAdjusted = "CPULimitAdjusted" // a managed pod's CPU limit changed (result=applied/dry-run)
 	reasonResizeInfeasible = "ResizeInfeasible" // kubelet refused the resize (result=infeasible)
 	reasonResizeForbidden  = "ResizeForbidden"  // limits.cpu quota 403 (result=quota-denied)
+
+	// actionResize is the events/v1 "action" (the machine-readable operation) for
+	// every Headroom event: they all concern the in-place CPU-limit resize.
+	actionResize = "Resizing"
 )
 
 // podStatus is the JSON payload of the kube-headroom.dev/status annotation
@@ -96,15 +100,17 @@ func (r *NodeReconciler) writePodStatus(ctx context.Context, pod *corev1.Pod, de
 	return r.Patch(ctx, pod, client.RawPatch(types.MergePatchType, body))
 }
 
-// recordEvent emits a Kubernetes event on the pod, tolerating a nil Recorder so
-// the reconciler stays usable in tests that don't wire one. Events fire only on
-// a change (a limit adjusted, a resize refused), never every reconcile
-// (kubernetes-conventions.md: events on lifecycle transitions only).
+// recordEvent emits a Kubernetes event on the pod via the events/v1 API,
+// tolerating a nil Recorder so the reconciler stays usable in tests that don't
+// wire one. Events fire only on a change (a limit adjusted, a resize refused),
+// never every reconcile (kubernetes-conventions.md: events on lifecycle
+// transitions only). msg is passed as a literal note (via %s) so a stray '%'
+// can't be misread as a format verb.
 func (r *NodeReconciler) recordEvent(pod *corev1.Pod, eventtype, reason, msg string) {
 	if r.Recorder == nil {
 		return
 	}
-	r.Recorder.Event(pod, eventtype, reason, msg)
+	r.Recorder.Eventf(pod, nil, eventtype, reason, actionResize, "%s", msg)
 }
 
 // adjustMessage is the human line shared by the CPULimitAdjusted event in both

@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
@@ -166,7 +166,7 @@ var _ = Describe("NodeReconciler", func() {
 	BeforeEach(func() {
 		// A buffered fake recorder so specs can drain events without blocking the
 		// reconcile; specs that assert events swap in their own.
-		r = &NodeReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: record.NewFakeRecorder(64)}
+		r = &NodeReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: events.NewFakeRecorder(64)}
 	})
 
 	AfterEach(func() {
@@ -370,7 +370,7 @@ var _ = Describe("NodeReconciler", func() {
 	})
 
 	It("emits a CPULimitAdjusted event on resize (§8.1)", func() {
-		rec := record.NewFakeRecorder(16)
+		rec := events.NewFakeRecorder(16)
 		r.Recorder = rec
 		applyConfig(false)
 		makeManagedNamespace()

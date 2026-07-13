@@ -172,7 +172,7 @@ func main() {
 	if err := (&controller.NodeReconciler{
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
-		Recorder: mgr.GetEventRecorderFor("headroom-node-controller"),
+		Recorder: mgr.GetEventRecorder("headroom-node-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "node")
 		os.Exit(1)
