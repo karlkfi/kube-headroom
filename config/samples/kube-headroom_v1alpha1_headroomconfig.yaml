@@ -42,3 +42,11 @@ spec:
     perNodePatchesPerSecond: 10
     clientQPS: 50
     clientBurst: 100
+  # Birth-limit mutating webhook (failurePolicy: Ignore, scoped to managed
+  # namespaces). Seeds limits.cpu = requests.cpu × initialMultiplier at pod-create
+  # time for short-lived and boot-time-quota pods the controller can't reach in
+  # time. dryRun above also suppresses seeding, so nothing is mutated until you
+  # flip dryRun to false.
+  webhook:
+    enabled: true
+    initialMultiplier: "2"
