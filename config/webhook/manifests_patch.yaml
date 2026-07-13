@@ -1,0 +1,17 @@
+# Scope the birth-limit mutating webhook to opted-in namespaces (design doc §6.5:
+# "scoped by the namespace label"). controller-gen cannot emit a namespaceSelector
+# from the +kubebuilder:webhook marker, so it is patched in here over the generated
+# manifests.yaml. This matches the default NamespaceSelector convention
+# (kube-headroom.dev/mode=managed); if HeadroomConfig sets a custom
+# NamespaceSelector, update this selector to match so the apiserver still invokes
+# the webhook for those namespaces. The handler re-checks the live config, so a
+# looser selector here only costs extra (ignored) invocations, never correctness.
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: mutating-webhook-configuration
+webhooks:
+- name: mpod-v1.kb.io
+  namespaceSelector:
+    matchLabels:
+      kube-headroom.dev/mode: managed

@@ -1,0 +1,8 @@
+resources:
+- manifests.yaml
+- service.yaml
+
+# Add a namespaceSelector to the generated MutatingWebhookConfiguration so the
+# birth-limit webhook only fires for opted-in namespaces (§6.5).
+patches:
+- path: manifests_patch.yaml

@@ -18,4 +18,12 @@ resources:
   kind: HeadroomConfig
   path: github.com/karlkfi/kube-headroom/api/v1alpha1
   version: v1alpha1
+- external: true
+  group: core
+  kind: Pod
+  path: k8s.io/api/core/v1
+  version: v1
+  webhooks:
+    defaulting: true
+    webhookVersion: v1
 version: "3"

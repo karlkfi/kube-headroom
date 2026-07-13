@@ -57,6 +57,30 @@ type ExcludedOwner struct {
 	Name string `json:"name,omitempty"`
 }
 
+// Webhook configures the birth-limit mutating admission webhook (§6.5). The
+// webhook seeds an absent CPU limit at pod-create time so short-lived pods (CI,
+// batch) and boot-time-quota runtimes (JVM, boot-read GOMAXPROCS) — which the
+// node reconciler may never reach in time — are born with a usable ceiling. The
+// controller corrects it post-bind for pods that live long enough.
+type Webhook struct {
+	// Enabled turns birth-limit seeding on. When false the webhook handler is a
+	// no-op even if the MutatingWebhookConfiguration is installed, so seeding can
+	// be switched off without uninstalling the webhook. Note DryRun also
+	// suppresses seeding (dry-run is observation-only, §9.3).
+	// +kubebuilder:default=true
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// InitialMultiplier seeds an absent CPU limit as requests.cpu × this — the
+	// node-independent birth limit the webhook can know before scheduling (§6.5).
+	// A container that already carries a CPU limit is left untouched. Values ≤ 1
+	// yield no burst room and are treated as "no seeding"; pick a cluster-typical
+	// factor (the default 2 gives a 2× birth ceiling).
+	// +kubebuilder:default="2"
+	// +optional
+	InitialMultiplier resource.Quantity `json:"initialMultiplier,omitempty"`
+}
+
 // RateLimits bounds the API-server write pressure from resize patching (§7).
 type RateLimits struct {
 	// PerNodePatchesPerSecond caps the resize patches issued per node.
@@ -122,6 +146,10 @@ type HeadroomConfigSpec struct {
 	// RateLimits bounds API-server write pressure.
 	// +optional
 	RateLimits RateLimits `json:"rateLimits,omitempty"`
+
+	// Webhook configures the birth-limit mutating admission webhook (§6.5).
+	// +optional
+	Webhook Webhook `json:"webhook,omitempty"`
 
 	// NamespaceSelector selects namespaces whose pods are eligible. When unset,
 	// the controller defaults to the label kube-headroom.dev/mode=managed (§6.3).

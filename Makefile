@@ -125,10 +125,11 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 	esac
 
 .PHONY: test-e2e
-# CertManager is not required: config/default deploys no webhook yet (Q6), so
-# skip its install to keep the e2e run lean.
+# CertManager is required: config/default deploys the Q6 birth-limit webhook,
+# whose serving cert (webhook-server-cert) is issued by cert-manager. The suite
+# installs it in BeforeSuite unless CERT_MANAGER_INSTALL_SKIP=true.
 test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
-	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) CERT_MANAGER_INSTALL_SKIP=true \
+	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) \
 		go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 	$(MAKE) cleanup-test-e2e
 

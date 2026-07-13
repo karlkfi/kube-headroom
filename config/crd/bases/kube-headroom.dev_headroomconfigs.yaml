@@ -287,6 +287,32 @@ spec:
                     minimum: 1
                     type: integer
                 type: object
+              webhook:
+                description: Webhook configures the birth-limit mutating admission
+                  webhook (§6.5).
+                properties:
+                  enabled:
+                    default: true
+                    description: |-
+                      Enabled turns birth-limit seeding on. When false the webhook handler is a
+                      no-op even if the MutatingWebhookConfiguration is installed, so seeding can
+                      be switched off without uninstalling the webhook. Note DryRun also
+                      suppresses seeding (dry-run is observation-only, §9.3).
+                    type: boolean
+                  initialMultiplier:
+                    anyOf:
+                    - type: integer
+                    - type: string
+                    default: "2"
+                    description: |-
+                      InitialMultiplier seeds an absent CPU limit as requests.cpu × this — the
+                      node-independent birth limit the webhook can know before scheduling (§6.5).
+                      A container that already carries a CPU limit is left untouched. Values ≤ 1
+                      yield no burst room and are treated as "no seeding"; pick a cluster-typical
+                      factor (the default 2 gives a 2× birth ceiling).
+                    pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                    x-kubernetes-int-or-string: true
+                type: object
             type: object
           status:
             description: status defines the observed state of HeadroomConfig
