@@ -18,6 +18,18 @@ spec:
       kube-headroom.dev/mode: managed
   excludedNamespaces:
     - kube-system
+  # Optionally carve out specific workloads even inside an opted-in namespace: a
+  # pod is skipped when any of its ownerReferences matches. Kind is required;
+  # apiGroup and name narrow the match.
+  # excludedOwners:
+  #   - kind: DaemonSet
+  #     apiGroup: apps
+  # Optionally exclude nodes where in-place resize is prohibited (static CPU/
+  # Memory Manager or NUMA-pinned nodes). Windows nodes are excluded
+  # automatically and need no selector.
+  # excludedNodeSelector:
+  #   matchLabels:
+  #     kube-headroom.dev/resize: unsupported
   # Remaining fields shown at their defaults for discoverability.
   minBurstFloor: "1"
   maxMultiplier: "10"

@@ -16,6 +16,12 @@ import (
 const (
 	nsA  = "team-a"
 	cApp = "app"
+
+	// Exclusion-gate fixtures shared across the pure and envtest specs.
+	kindDaemonSet     = "DaemonSet"
+	groupApps         = "apps"
+	nodeExcludedLabel = "headroom-excluded"
+	labelTrue         = "true"
 )
 
 // container is a compact fixture builder for a resizable app container.
@@ -254,6 +260,112 @@ func TestNamespaceManaged(t *testing.T) {
 	}
 	if namespaceManaged(managedNS, &selSpec) {
 		t.Error("mode label should not satisfy an explicit selector")
+	}
+}
+
+func TestOwnerExcluded(t *testing.T) {
+	ownedBy := func(kind, apiVersion, name string) *corev1.Pod {
+		p := burstablePod("owned", container(cApp, 100, 0))
+		p.OwnerReferences = []metav1.OwnerReference{{Kind: kind, APIVersion: apiVersion, Name: name}}
+		return p
+	}
+
+	tests := []struct {
+		name     string
+		pod      *corev1.Pod
+		excluded []kubeheadroomv1alpha1.ExcludedOwner
+		want     bool
+	}{
+		{
+			name: "no owners, no exclusions",
+			pod:  burstablePod("plain", container(cApp, 100, 0)),
+			want: false,
+		},
+		{
+			name:     "kind-only match",
+			pod:      ownedBy(kindDaemonSet, "apps/v1", "fluentd"),
+			excluded: []kubeheadroomv1alpha1.ExcludedOwner{{Kind: kindDaemonSet}},
+			want:     true,
+		},
+		{
+			name:     "kind matches but apiGroup does not",
+			pod:      ownedBy(kindDaemonSet, "apps/v1", "fluentd"),
+			excluded: []kubeheadroomv1alpha1.ExcludedOwner{{Kind: kindDaemonSet, APIGroup: "batch"}},
+			want:     false,
+		},
+		{
+			name:     "kind + apiGroup match",
+			pod:      ownedBy("StatefulSet", "apps/v1", "db"),
+			excluded: []kubeheadroomv1alpha1.ExcludedOwner{{Kind: "StatefulSet", APIGroup: groupApps}},
+			want:     true,
+		},
+		{
+			name:     "name narrows the match",
+			pod:      ownedBy("StatefulSet", "apps/v1", "db"),
+			excluded: []kubeheadroomv1alpha1.ExcludedOwner{{Kind: "StatefulSet", Name: "other"}},
+			want:     false,
+		},
+		{
+			name:     "core-group owner has empty group",
+			pod:      ownedBy("Node", "v1", "node-1"),
+			excluded: []kubeheadroomv1alpha1.ExcludedOwner{{Kind: "Node", APIGroup: ""}},
+			want:     true,
+		},
+		{
+			name:     "core-group owner does not match a grouped exclusion",
+			pod:      ownedBy("Node", "v1", "node-1"),
+			excluded: []kubeheadroomv1alpha1.ExcludedOwner{{Kind: "Node", APIGroup: "apps"}},
+			want:     false,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ownerExcluded(tc.pod, tc.excluded); got != tc.want {
+				t.Errorf("ownerExcluded = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestNodeManageable(t *testing.T) {
+	linux := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "linux-1"}}
+	linux.Status.NodeInfo.OperatingSystem = "linux"
+
+	windowsByInfo := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "win-1"}}
+	windowsByInfo.Status.NodeInfo.OperatingSystem = osWindows
+
+	windowsByLabel := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name:   "win-2",
+		Labels: map[string]string{corev1.LabelOSStable: osWindows},
+	}}
+
+	staticCPU := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name:   "numa-1",
+		Labels: map[string]string{nodeExcludedLabel: labelTrue},
+	}}
+
+	empty := &kubeheadroomv1alpha1.HeadroomConfigSpec{}
+	withSelector := &kubeheadroomv1alpha1.HeadroomConfigSpec{
+		ExcludedNodeSelector: &metav1.LabelSelector{MatchLabels: map[string]string{nodeExcludedLabel: labelTrue}},
+	}
+
+	if !nodeManageable(linux, empty) {
+		t.Error("a plain linux node should be manageable")
+	}
+	if nodeManageable(windowsByInfo, empty) {
+		t.Error("a windows node (NodeInfo) must be excluded")
+	}
+	if nodeManageable(windowsByLabel, empty) {
+		t.Error("a windows node (os label) must be excluded")
+	}
+	if !nodeManageable(staticCPU, empty) {
+		t.Error("without a selector the labeled node is manageable")
+	}
+	if nodeManageable(staticCPU, withSelector) {
+		t.Error("a node matching ExcludedNodeSelector must be excluded")
+	}
+	if !nodeManageable(linux, withSelector) {
+		t.Error("a node not matching the selector stays manageable")
 	}
 }
 

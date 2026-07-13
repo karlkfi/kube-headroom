@@ -37,6 +37,26 @@ type Deadband struct {
 	ShrinkPercent int32 `json:"shrinkPercent,omitempty"`
 }
 
+// ExcludedOwner matches a pod against one of its ownerReferences so an operator
+// can carve specific workloads out of an otherwise opted-in namespace (§6.3).
+// Kind is required; APIGroup and Name narrow the match when set.
+type ExcludedOwner struct {
+	// Kind is the owner kind to exclude, e.g. "DaemonSet" or "StatefulSet".
+	// +kubebuilder:validation:MinLength=1
+	// +required
+	Kind string `json:"kind"`
+
+	// APIGroup restricts the match to owners in this API group (e.g. "apps").
+	// Empty matches an owner in any group.
+	// +optional
+	APIGroup string `json:"apiGroup,omitempty"`
+
+	// Name restricts the match to a single owner object by name. Empty matches
+	// any owner of the given Kind.
+	// +optional
+	Name string `json:"name,omitempty"`
+}
+
 // RateLimits bounds the API-server write pressure from resize patching (§7).
 type RateLimits struct {
 	// PerNodePatchesPerSecond caps the resize patches issued per node.
@@ -112,6 +132,21 @@ type HeadroomConfigSpec struct {
 	// +kubebuilder:default={"kube-system"}
 	// +optional
 	ExcludedNamespaces []string `json:"excludedNamespaces,omitempty"`
+
+	// ExcludedOwners carves specific workloads out of management even inside an
+	// opted-in namespace: a pod is skipped when any of its ownerReferences
+	// matches an entry (§6.3). Use it for operator-managed or latency-critical
+	// workloads that must keep their static limits.
+	// +listType=atomic
+	// +optional
+	ExcludedOwners []ExcludedOwner `json:"excludedOwners,omitempty"`
+
+	// ExcludedNodeSelector marks nodes whose pods Headroom must not manage — set
+	// it to select static CPU/Memory Manager or NUMA-pinned nodes, where in-place
+	// resize is prohibited (§6.3, §8.4). Windows nodes are excluded structurally
+	// and need no selector. Nil selects no nodes (exclude none).
+	// +optional
+	ExcludedNodeSelector *metav1.LabelSelector `json:"excludedNodeSelector,omitempty"`
 }
 
 // HeadroomConfigStatus is the observed state of the controller.

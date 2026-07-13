@@ -97,6 +97,88 @@ spec:
                 items:
                   type: string
                 type: array
+              excludedNodeSelector:
+                description: |-
+                  ExcludedNodeSelector marks nodes whose pods Headroom must not manage — set
+                  it to select static CPU/Memory Manager or NUMA-pinned nodes, where in-place
+                  resize is prohibited (§6.3, §8.4). Windows nodes are excluded structurally
+                  and need no selector. Nil selects no nodes (exclude none).
+                properties:
+                  matchExpressions:
+                    description: matchExpressions is a list of label selector requirements.
+                      The requirements are ANDed.
+                    items:
+                      description: |-
+                        A label selector requirement is a selector that contains values, a key, and an operator that
+                        relates the key and values.
+                      properties:
+                        key:
+                          description: key is the label key that the selector applies
+                            to.
+                          type: string
+                        operator:
+                          description: |-
+                            operator represents a key's relationship to a set of values.
+                            Valid operators are In, NotIn, Exists and DoesNotExist.
+                          type: string
+                        values:
+                          description: |-
+                            values is an array of string values. If the operator is In or NotIn,
+                            the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                            the values array must be empty. This array is replaced during a strategic
+                            merge patch.
+                          items:
+                            type: string
+                          type: array
+                          x-kubernetes-list-type: atomic
+                      required:
+                      - key
+                      - operator
+                      type: object
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  matchLabels:
+                    additionalProperties:
+                      type: string
+                    description: |-
+                      matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                      map is equivalent to an element of matchExpressions, whose key field is "key", the
+                      operator is "In", and the values array contains only "value". The requirements are ANDed.
+                    type: object
+                type: object
+                x-kubernetes-map-type: atomic
+              excludedOwners:
+                description: |-
+                  ExcludedOwners carves specific workloads out of management even inside an
+                  opted-in namespace: a pod is skipped when any of its ownerReferences
+                  matches an entry (§6.3). Use it for operator-managed or latency-critical
+                  workloads that must keep their static limits.
+                items:
+                  description: |-
+                    ExcludedOwner matches a pod against one of its ownerReferences so an operator
+                    can carve specific workloads out of an otherwise opted-in namespace (§6.3).
+                    Kind is required; APIGroup and Name narrow the match when set.
+                  properties:
+                    apiGroup:
+                      description: |-
+                        APIGroup restricts the match to owners in this API group (e.g. "apps").
+                        Empty matches an owner in any group.
+                      type: string
+                    kind:
+                      description: Kind is the owner kind to exclude, e.g. "DaemonSet"
+                        or "StatefulSet".
+                      minLength: 1
+                      type: string
+                    name:
+                      description: |-
+                        Name restricts the match to a single owner object by name. Empty matches
+                        any owner of the given Kind.
+                      type: string
+                  required:
+                  - kind
+                  type: object
+                type: array
+                x-kubernetes-list-type: atomic
               maxMultiplier:
                 anyOf:
                 - type: integer

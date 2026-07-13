@@ -103,12 +103,19 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	}
 	allocatableMilli := node.Status.Allocatable.Cpu().MilliValue()
 
+	// Windows / static-CPU-manager / NUMA-pinned nodes forbid in-place resize
+	// (§6.3): recompute slack for observability but manage none of their pods.
+	nodeManaged := nodeManageable(&node, &cfg.spec)
+	if !nodeManaged {
+		log.V(1).Info("node excluded from management; pods contribute slack only", "node", req.Name)
+	}
+
 	var podList corev1.PodList
 	if err := r.List(ctx, &podList, client.MatchingFields{podNodeNameIndex: req.Name}); err != nil {
 		return ctrl.Result{}, fmt.Errorf("list pods on node %s: %w", req.Name, err)
 	}
 
-	inputs, byKey, err := r.buildInputs(ctx, cfg, podList.Items)
+	inputs, byKey, err := r.buildInputs(ctx, cfg, podList.Items, nodeManaged)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -129,8 +136,11 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			continue
 		}
 		if cfg.dryRun {
-			// Dry-run computes and (in Q7) meters, but issues no patch (§9.3).
-			log.V(1).Info("dry-run: would resize", "pod", d.Key,
+			// Dry-run meters what would change but issues no patch (§9.3): it is the
+			// default, safe adoption path. Metrics/annotations for the same signal
+			// land in Q7; here the record is the log line.
+			log.Info("dry-run: would resize", "pod", d.Key,
+				"currentMilli", podCurrentLimitMilli(resizableContainers(pod)),
 				"targetMilli", d.TargetLimitMilli, "reason", d.Reason)
 			continue
 		}
@@ -159,7 +169,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 // pod contributes to slack (§5.4); only eligible, namespace-enrolled, non-backed
 // -off pods are marked Managed and thus receive a limit. It returns the inputs
 // and a key→pod map so decisions can be applied without re-fetching.
-func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, pods []corev1.Pod) ([]policy.PodInput, map[string]*corev1.Pod, error) {
+func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, pods []corev1.Pod, nodeManaged bool) ([]policy.PodInput, map[string]*corev1.Pod, error) {
 	nsManaged := map[string]bool{}
 	inputs := make([]policy.PodInput, 0, len(pods))
 	byKey := make(map[string]*corev1.Pod, len(pods))
@@ -172,7 +182,7 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 		rcs := resizableContainers(pod)
 
 		managed := false
-		if eligible(pod, rcs) && !r.inBackoff(pod) {
+		if nodeManaged && eligible(pod, rcs) && !ownerExcluded(pod, cfg.spec.ExcludedOwners) && !r.inBackoff(pod) {
 			ok, cached := nsManaged[pod.Namespace]
 			if !cached {
 				var ns corev1.Namespace
