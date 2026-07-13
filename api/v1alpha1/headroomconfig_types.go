@@ -75,8 +75,11 @@ type Webhook struct {
 	// node-independent birth limit the webhook can know before scheduling (§6.5).
 	// A container that already carries a CPU limit is left untouched. Values ≤ 1
 	// yield no burst room and are treated as "no seeding"; pick a cluster-typical
-	// factor (the default 2 gives a 2× birth ceiling).
+	// factor (the default 2 gives a 2× birth ceiling). Capped at 100 so a bad
+	// config cannot seed an unbounded birth limit (§5.3); the webhook additionally
+	// clamps seeding to spec.maxMultiplier at runtime.
 	// +kubebuilder:default="2"
+	// +kubebuilder:validation:XValidation:rule="quantity(string(self)).compareTo(quantity('100')) <= 0",message="initialMultiplier must not exceed 100 (request × 100)"
 	// +optional
 	InitialMultiplier resource.Quantity `json:"initialMultiplier,omitempty"`
 }
@@ -123,7 +126,11 @@ type HeadroomConfigSpec struct {
 	MinBurstFloor resource.Quantity `json:"minBurstFloor,omitempty"`
 
 	// MaxMultiplier caps a limit at request × this value; "0" disables (§5.3).
+	// A finite cap must not exceed 100 (use "0" for an unbounded batch pool, not a
+	// huge number) so it stays a real bound on both the reconciled limit and the
+	// webhook's clamped birth limit.
 	// +kubebuilder:default="10"
+	// +kubebuilder:validation:XValidation:rule="quantity(string(self)).compareTo(quantity('100')) <= 0",message="maxMultiplier must not exceed 100 (use '0' to disable the cap)"
 	// +optional
 	MaxMultiplier resource.Quantity `json:"maxMultiplier,omitempty"`
 
