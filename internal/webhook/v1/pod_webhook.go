@@ -76,10 +76,10 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, pod *corev1.Pod) error
 		return nil // a restart-on-resize container disqualifies the whole pod (§9.4.2)
 	}
 
-	if seeded := seedBirthLimits(pod, rcs, cfg.multiplier, cfg.quantumMilli); len(seeded) > 0 {
+	if seeded := seedBirthLimits(pod, rcs, cfg.multiplier, cfg.maxMultiplier, cfg.quantumMilli); len(seeded) > 0 {
 		podlog.Info("seeded birth CPU limits",
 			"namespace", pod.Namespace, "pod", podName(pod),
-			"containers", seeded, "multiplier", cfg.multiplier)
+			"containers", seeded, "multiplier", cfg.multiplier, "maxMultiplier", cfg.maxMultiplier)
 	}
 	return nil
 }
@@ -92,7 +92,15 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, pod *corev1.Pod) error
 // limit), consuming tenant quota. It mutates pod in place and returns the names of
 // the containers it seeded. The set of resizable containers comes from the shared
 // eligibility rule; this function only maps names back to the mutable pointers.
-func seedBirthLimits(pod *corev1.Pod, rcs []eligibility.ResizableContainer, multiplier float64, quantumMilli int64) []string {
+func seedBirthLimits(pod *corev1.Pod, rcs []eligibility.ResizableContainer, multiplier, maxMultiplier float64, quantumMilli int64) []string {
+	// Clamp the birth multiplier to the policy cap (spec.maxMultiplier; "0"
+	// disables) so the webhook never seeds a limit the node reconciler would
+	// immediately shrink — and, defensively, so an oversized InitialMultiplier
+	// (even one that slipped past CRD validation) can never seed an unbounded CPU
+	// limit (§5.3, §6.5).
+	if maxMultiplier > 0 && multiplier > maxMultiplier {
+		multiplier = maxMultiplier
+	}
 	if multiplier <= 1 {
 		return nil // ≤1× is no burst room; treat as "no seeding"
 	}
@@ -146,11 +154,12 @@ func quantizeMilli(v, q int64) int64 {
 
 // webhookConfig is HeadroomConfig reduced to what the webhook acts on.
 type webhookConfig struct {
-	enabled      bool
-	dryRun       bool
-	multiplier   float64
-	quantumMilli int64
-	spec         *kubeheadroomv1alpha1.HeadroomConfigSpec
+	enabled       bool
+	dryRun        bool
+	multiplier    float64
+	maxMultiplier float64
+	quantumMilli  int64
+	spec          *kubeheadroomv1alpha1.HeadroomConfigSpec
 }
 
 // loadConfig reads the HeadroomConfig singleton. When it is absent the webhook
@@ -177,11 +186,12 @@ func (d *PodCustomDefaulter) loadConfig(ctx context.Context) (webhookConfig, boo
 		dryRun = *s.DryRun
 	}
 	return webhookConfig{
-		enabled:      enabled,
-		dryRun:       dryRun,
-		multiplier:   s.Webhook.InitialMultiplier.AsApproximateFloat64(),
-		quantumMilli: s.Quantum.MilliValue(),
-		spec:         &s,
+		enabled:       enabled,
+		dryRun:        dryRun,
+		multiplier:    s.Webhook.InitialMultiplier.AsApproximateFloat64(),
+		maxMultiplier: s.MaxMultiplier.AsApproximateFloat64(),
+		quantumMilli:  s.Quantum.MilliValue(),
+		spec:          &s,
 	}, true
 }
 

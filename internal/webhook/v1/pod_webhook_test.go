@@ -247,6 +247,39 @@ func TestDefaultSeedsSidecarNotPlainInit(t *testing.T) {
 	}
 }
 
+// TestDefaultClampsToMaxMultiplier proves the birth multiplier is clamped to
+// spec.maxMultiplier, so an oversized InitialMultiplier — even one that bypassed
+// CRD validation — cannot seed an unbounded CPU limit (Q18).
+func TestDefaultClampsToMaxMultiplier(t *testing.T) {
+	d := newDefaulter(config(func(s *kubeheadroomv1alpha1.HeadroomConfigSpec) {
+		s.Webhook.InitialMultiplier = resource.MustParse("1000") // absurd (validation-bypassed)
+		s.MaxMultiplier = resource.MustParse("10")               // policy cap
+	}), managedNS())
+	p := pod(container(cApp, 100, 0))
+	if err := d.Default(context.Background(), p); err != nil {
+		t.Fatalf("Default returned error: %v", err)
+	}
+	if got := limitMilli(p, cApp); got != 1000 {
+		t.Errorf("seeded limit = %dm, want 1000m (clamped to 100m × 10, not × 1000)", got)
+	}
+}
+
+// TestDefaultMaxMultiplierDisabledNoClamp proves maxMultiplier "0" (the disable
+// sentinel) leaves the birth multiplier unclamped.
+func TestDefaultMaxMultiplierDisabledNoClamp(t *testing.T) {
+	d := newDefaulter(config(func(s *kubeheadroomv1alpha1.HeadroomConfigSpec) {
+		s.Webhook.InitialMultiplier = resource.MustParse("5")
+		s.MaxMultiplier = resource.MustParse("0") // cap disabled
+	}), managedNS())
+	p := pod(container(cApp, 100, 0))
+	if err := d.Default(context.Background(), p); err != nil {
+		t.Fatalf("Default returned error: %v", err)
+	}
+	if got := limitMilli(p, cApp); got != 500 {
+		t.Errorf("seeded limit = %dm, want 500m (100m × 5, cap disabled)", got)
+	}
+}
+
 func TestDefaultQuantizes(t *testing.T) {
 	// request 105m × 2 = 210m; with a 100m quantum it rounds to 200m.
 	d := newDefaulter(config(func(s *kubeheadroomv1alpha1.HeadroomConfigSpec) { s.Quantum = resource.MustParse("100m") }), managedNS())
