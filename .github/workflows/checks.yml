@@ -68,3 +68,16 @@ jobs:
           persist-credentials: false
       - name: Check relative links and anchors
         run: make doc-links
+
+  plan-hygiene:
+    name: Plan hygiene
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Check plan docs are referenced or archived
+        run: make plan-hygiene

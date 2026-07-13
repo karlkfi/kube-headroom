@@ -90,6 +90,10 @@ shellcheck: ## Lint shell scripts and git hooks (skips locally if shellcheck is 
 doc-links: ## Check Markdown for broken relative links/anchors (offline, no external deps).
 	python3 scripts/check-doc-links.py
 
+.PHONY: plan-hygiene
+plan-hygiene: ## Check plan docs are STATUS-referenced or archived, and unreferenced by Go code.
+	bash scripts/lint-plan-hygiene.sh
+
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
 # kubectl kuberc is disabled by default for test isolation; enable with:
