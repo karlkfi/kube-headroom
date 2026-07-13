@@ -57,6 +57,12 @@ signal). Commit `docs/STATUS.md` changes in **isolated** `docs(status):` commits
 — never mixed with code. The pre-commit hook (installed via `git config
 core.hooksPath .githooks`) enforces this and lints the file.
 
+## Security
+
+Found a vulnerability? Don't open a public issue — follow
+[`SECURITY.md`](SECURITY.md) (GitHub private vulnerability reporting). Changes
+are expected not to regress security posture; CI runs `govulncheck` on every PR.
+
 ## Licensing
 
 This repo intentionally has **no license** yet — do not add license/copyright
