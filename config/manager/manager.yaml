@@ -21,7 +21,10 @@ spec:
     matchLabels:
       control-plane: controller-manager
       app.kubernetes.io/name: kube-headroom
-  replicas: 1
+  # Run ≥2 replicas so the mutating admission webhook (which serves on every
+  # replica, not just the leader) has no single point of failure in the
+  # synchronous pod-CREATE path. Leader election still gates the reconcilers.
+  replicas: 2
   template:
     metadata:
       annotations:
@@ -50,6 +53,17 @@ spec:
       #             operator: In
       #             values:
       #               - linux
+      # Prefer spreading replicas across nodes for availability, but keep it a
+      # soft constraint (ScheduleAnyway) so all replicas still co-schedule on a
+      # single-node kind cluster — required for e2e.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              control-plane: controller-manager
+              app.kubernetes.io/name: kube-headroom
       securityContext:
         # Projects are configured by default to adhere to the "restricted" Pod Security Standards.
         # This ensures that deployments meet the highest security requirements for Kubernetes.
