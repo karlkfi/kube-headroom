@@ -40,6 +40,10 @@ kubebuilder v4 project. API group / annotation prefix: **`kube-headroom.dev`**
 - `internal/controller/` — controllers (node reconciler lands in Q4).
 - `config/` — kustomize manifests (CRD, RBAC, manager).
 - `docs/plan/` — plan docs for M/L backlog items.
+- `tools/` — separate Go module (`//go:build tools` pattern) pinning the
+  build-tool versions (controller-gen, kustomize, golangci-lint, govulncheck).
+  The Makefile `go build`s each from here; bump versions in `tools/go.mod`, not
+  the Makefile.
 
 Build: `make manifests generate` after editing API types; `make build` /
 `make test` (envtest). `make run` runs the manager against the current
