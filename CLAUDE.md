@@ -63,6 +63,11 @@ kubecontext.
   at them. Scaffold new APIs/webhooks with `kubebuilder create api|webhook`
   rather than creating files by hand.
 - **e2e requires a dedicated kind cluster** (never a real dev/prod context).
+- **Editing `.githooks/*` from a git worktree?** `core.hooksPath` is an
+  absolute path to the *main* checkout's `.githooks`, so `git commit` in a
+  worktree runs the main copy, not your edited one — test the change by
+  invoking the script directly (`bash .githooks/pre-commit`) rather than
+  trusting a commit to exercise it.
 - Full kubebuilder reference: https://book.kubebuilder.io.
 
 > `AGENTS.md` is a symlink to this file — one source of truth for every agent
