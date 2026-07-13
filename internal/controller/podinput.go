@@ -2,6 +2,7 @@ package controller
 
 import (
 	"slices"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -11,6 +12,10 @@ import (
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
 	"github.com/karlkfi/kube-headroom/internal/policy"
 )
+
+// osWindows is the node OperatingSystem value for Windows nodes, which cannot
+// perform in-place CPU resize (§8.4) and are therefore excluded structurally.
+const osWindows = "windows"
 
 // resizableContainer is one container Headroom may resize on a pod: an app
 // container or a restartable-init (sidecar) container. Regular init containers
@@ -95,10 +100,11 @@ func podCurrentLimitMilli(rcs []resizableContainer) int64 {
 }
 
 // eligible applies the pod-local eligibility gates Headroom needs before it may
-// manage a pod (§6.3). It is intentionally the safe subset: namespace opt-in is
-// resolved separately by the reconciler, and the fuller gate set (exclusion
-// lists, LimitRange awareness, dry-run metering) lands with Q5. The resizePolicy
-// gate is a safety invariant (§9.4.2) and lives here permanently.
+// manage a pod (§6.3): non-terminal, not opted out, Burstable QoS, a positive
+// CPU request, and no container that would restart on resize (§9.4.2). The
+// remaining §6.3 gates need cluster context and live in the reconciler:
+// namespace opt-in (namespaceManaged), owner exclusion (ownerExcluded), and node
+// exclusion (nodeManageable). LimitRange awareness is deferred to Phase 2.
 func eligible(pod *corev1.Pod, rcs []resizableContainer) bool {
 	if podTerminal(pod) {
 		return false
@@ -140,6 +146,51 @@ func namespaceManaged(ns *corev1.Namespace, spec *kubeheadroomv1alpha1.HeadroomC
 		return sel.Matches(labels.Set(ns.Labels))
 	}
 	return ns.Labels[kubeheadroomv1alpha1.LabelMode] == kubeheadroomv1alpha1.ModeManaged
+}
+
+// ownerExcluded reports whether the pod is owned by anything in the operator's
+// exclusion list (§6.3). A pod matches when one of its ownerReferences shares an
+// entry's Kind and — when the entry constrains them — its APIGroup and Name. The
+// owner's APIVersion (e.g. "apps/v1") is reduced to its group ("apps") for the
+// APIGroup comparison; core-group owners carry an empty group.
+func ownerExcluded(pod *corev1.Pod, excluded []kubeheadroomv1alpha1.ExcludedOwner) bool {
+	for _, ref := range pod.OwnerReferences {
+		group, _, _ := strings.Cut(ref.APIVersion, "/") // "apps/v1" -> "apps"; "v1" -> ""
+		for _, e := range excluded {
+			if e.Kind != ref.Kind {
+				continue
+			}
+			if e.APIGroup != "" && e.APIGroup != group {
+				continue
+			}
+			if e.Name != "" && e.Name != ref.Name {
+				continue
+			}
+			return true
+		}
+	}
+	return false
+}
+
+// nodeManageable reports whether Headroom may manage pods bound to the node
+// (§6.3). Windows nodes cannot do in-place CPU resize and are excluded
+// structurally; static CPU/Memory Manager and NUMA-pinned nodes, where resize is
+// prohibited, are opt-out via the operator's ExcludedNodeSelector (with the §6.4
+// Infeasible back-off as the defensive fallback when a node is not pre-labeled).
+func nodeManageable(node *corev1.Node, spec *kubeheadroomv1alpha1.HeadroomConfigSpec) bool {
+	if node.Status.NodeInfo.OperatingSystem == osWindows || node.Labels[corev1.LabelOSStable] == osWindows {
+		return false
+	}
+	if spec.ExcludedNodeSelector != nil {
+		sel, err := metav1.LabelSelectorAsSelector(spec.ExcludedNodeSelector)
+		if err != nil {
+			return false // a malformed selector is fail-closed: manage nothing on any node
+		}
+		if sel.Matches(labels.Set(node.Labels)) {
+			return false
+		}
+	}
+	return true
 }
 
 // userCapMilli reads the optional per-pod ceiling annotation (§5.3); 0 = none.

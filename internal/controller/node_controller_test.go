@@ -36,6 +36,15 @@ func makeNode(name string, cores int64) {
 	Expect(k8sClient.Status().Update(ctx, node)).To(Succeed())
 }
 
+// makeWindowsNode creates a Windows node (in-place resize unsupported, §8.4).
+func makeWindowsNode(name string, cores int64) {
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	Expect(k8sClient.Create(ctx, node)).To(Succeed())
+	node.Status.Allocatable = corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(cores, resource.DecimalSI)}
+	node.Status.NodeInfo.OperatingSystem = osWindows
+	Expect(k8sClient.Status().Update(ctx, node)).To(Succeed())
+}
+
 // makeManagedNamespace ensures the nsA namespace exists, opted in via the
 // mode=managed label.
 func makeManagedNamespace() {
@@ -69,6 +78,23 @@ func makeBurstablePod(ns, name, node string, reqMilli, limMilli int64) {
 	Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 }
 
+// makeOwnedBurstablePod is makeBurstablePod plus a single ownerReference, used to
+// exercise the ExcludedOwners gate (§6.3).
+func makeOwnedBurstablePod(ns, name, node string, reqMilli int64, owner metav1.OwnerReference) {
+	c := corev1.Container{
+		Name:  cApp,
+		Image: "busybox:1.36",
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{corev1.ResourceCPU: *resource.NewMilliQuantity(reqMilli, resource.DecimalSI)},
+		},
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, OwnerReferences: []metav1.OwnerReference{owner}},
+		Spec:       corev1.PodSpec{Containers: []corev1.Container{c}, NodeName: node},
+	}
+	Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+}
+
 func podLimitMilli(ns, name string) int64 {
 	var pod corev1.Pod
 	Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, &pod)).To(Succeed())
@@ -77,10 +103,19 @@ func podLimitMilli(ns, name string) int64 {
 
 // applyConfig upserts the singleton HeadroomConfig with the given dryRun value.
 func applyConfig(dryRun bool) {
+	applyConfigWith(dryRun, nil)
+}
+
+// applyConfigWith upserts the singleton with dryRun plus an optional extra
+// mutation of the spec (e.g. ExcludedOwners, ExcludedNodeSelector).
+func applyConfigWith(dryRun bool, extra func(*kubeheadroomv1alpha1.HeadroomConfigSpec)) {
 	dr := dryRun
 	hc := &kubeheadroomv1alpha1.HeadroomConfig{ObjectMeta: metav1.ObjectMeta{Name: kubeheadroomv1alpha1.SingletonName}}
 	_, err := controllerutilCreateOrPatch(hc, func() {
 		hc.Spec.DryRun = &dr
+		if extra != nil {
+			extra(&hc.Spec)
+		}
 	})
 	Expect(err).NotTo(HaveOccurred())
 }
@@ -159,6 +194,53 @@ var _ = Describe("NodeReconciler", func() {
 		reconcileNode(node)
 
 		Consistently(func() int64 { return podLimitMilli("team-plain", "unmanaged") }).Should(Equal(int64(0)))
+	})
+
+	It("does not manage pods on a Windows node", func() {
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeWindowsNode(node, 8)
+		makeBurstablePod(nsA, "winpod", node, 1000, 0)
+
+		reconcileNode(node)
+
+		Consistently(func() int64 { return podLimitMilli(nsA, "winpod") }).Should(Equal(int64(0)))
+	})
+
+	It("does not manage pods on a node matching ExcludedNodeSelector", func() {
+		applyConfigWith(false, func(s *kubeheadroomv1alpha1.HeadroomConfigSpec) {
+			s.ExcludedNodeSelector = &metav1.LabelSelector{MatchLabels: map[string]string{nodeExcludedLabel: labelTrue}}
+		})
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		// Label the node so the selector excludes it.
+		var n corev1.Node
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node}, &n)).To(Succeed())
+		n.Labels = map[string]string{nodeExcludedLabel: labelTrue}
+		Expect(k8sClient.Update(ctx, &n)).To(Succeed())
+		makeBurstablePod(nsA, "numapod", node, 1000, 0)
+
+		reconcileNode(node)
+
+		Consistently(func() int64 { return podLimitMilli(nsA, "numapod") }).Should(Equal(int64(0)))
+	})
+
+	It("does not manage a pod owned by an excluded owner", func() {
+		applyConfigWith(false, func(s *kubeheadroomv1alpha1.HeadroomConfigSpec) {
+			s.ExcludedOwners = []kubeheadroomv1alpha1.ExcludedOwner{{Kind: kindDaemonSet, APIGroup: groupApps}}
+		})
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeOwnedBurstablePod(nsA, "dspod", node, 1000, metav1.OwnerReference{
+			APIVersion: "apps/v1", Kind: kindDaemonSet, Name: "fluentd", UID: "uid-ds",
+		})
+
+		reconcileNode(node)
+
+		Consistently(func() int64 { return podLimitMilli(nsA, "dspod") }).Should(Equal(int64(0)))
 	})
 
 	It("shrinks a limit when a neighbor books the node's slack", func() {
