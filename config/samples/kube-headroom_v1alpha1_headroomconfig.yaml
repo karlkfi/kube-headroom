@@ -11,10 +11,11 @@ spec:
   # Start in dry-run: compute targets, annotate pods, and emit metrics, but
   # issue no resize patches. Flip to false once you trust the recommendations.
   dryRun: true
-  # Manage pods only in namespaces labeled kube-headroom.dev/enabled=true.
+  # Manage pods only in namespaces labeled kube-headroom.dev/mode=managed.
+  # (Opt one pod out with kube-headroom.dev/mode=unmanaged.)
   namespaceSelector:
     matchLabels:
-      kube-headroom.dev/enabled: "true"
+      kube-headroom.dev/mode: managed
   excludedNamespaces:
     - kube-system
   # Remaining fields shown at their defaults for discoverability.

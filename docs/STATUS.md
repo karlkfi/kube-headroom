@@ -12,7 +12,6 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q10"></a>Q10 | Enum-keyword label values | `policy` | 🔲 | S | Switch label values from booleans (`enabled: "true"`) to enum keywords (dodges YAML 1.1 coercion, fail-closed)? Affects §6.3, `labels.go`, sample; settle before Q5. |
 | <a id="Q4"></a>Q4 | [Node reconciler](plan/node-reconciler.md) | `controller` | 🔲 | M | Pod/node informers on `spec.nodeName`, debounce, hysteresis, rate-limited resize patching into the policy core (§6.2). SSA `Force=true` mgr `headroom`; quota `403` handled like `Infeasible` ([spike](plan/phase0-resize-spike.md)). |
 | <a id="Q5"></a>Q5 | Pod eligibility + dry-run mode | `controller` | 🔲 | S | §6.3 gates (ns opt-in, Burstable, **CPU request > 0**, resizePolicy≠RestartContainer, exclusions); controller adds the limit, pre-declare gate dropped ([spike](plan/phase0-resize-spike.md)); dry-run meters, no patch (§9.3, ship first). |
 | <a id="Q6"></a>Q6 | Mutating admission webhook | `webhook` | 🔲 | S | §6.5 `failurePolicy: Ignore`, namespace-scoped; seeds birth limits for short-lived/boot-time-quota pods. Not needed for long-lived-pod manageability — the controller adds limits itself ([spike](plan/phase0-resize-spike.md)). |

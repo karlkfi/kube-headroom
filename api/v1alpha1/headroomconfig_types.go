@@ -104,7 +104,7 @@ type HeadroomConfigSpec struct {
 	RateLimits RateLimits `json:"rateLimits,omitempty"`
 
 	// NamespaceSelector selects namespaces whose pods are eligible. When unset,
-	// the controller defaults to the label kube-headroom.dev/enabled=true (§6.3).
+	// the controller defaults to the label kube-headroom.dev/mode=managed (§6.3).
 	// +optional
 	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
 
