@@ -78,11 +78,8 @@ backlog-lint: ## Lint the docs/STATUS.md backlog.
 	bash scripts/lint-backlog.sh docs/STATUS.md
 
 .PHONY: govulncheck
-govulncheck: $(GOVULNCHECK) ## Report known vulnerabilities in dependencies.
+govulncheck: govulncheck-tool ## Report known vulnerabilities in dependencies.
 	"$(GOVULNCHECK)" ./...
-
-$(GOVULNCHECK): $(LOCALBIN)
-	$(call go-build-tool,$(GOVULNCHECK),golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
 
 .PHONY: shellcheck
 shellcheck: ## Lint shell scripts and git hooks (skips locally if shellcheck is absent; CI runs it strictly).
@@ -275,6 +272,11 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 		$(GOLANGCI_LINT) custom --destination $(LOCALBIN) --name golangci-lint-custom && \
 		mv -f $(LOCALBIN)/golangci-lint-custom $(GOLANGCI_LINT); \
 	} || true
+
+.PHONY: govulncheck-tool
+govulncheck-tool: $(GOVULNCHECK) ## Build govulncheck from the tools submodule if necessary.
+$(GOVULNCHECK): $(LOCALBIN)
+	$(call go-build-tool,$(GOVULNCHECK),golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
