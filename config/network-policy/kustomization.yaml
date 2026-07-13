@@ -1,7 +1,7 @@
 resources:
+# Both policies select the controller-manager Pod. A NetworkPolicy selecting a
+# Pod makes its ingress default-deny except for the ports it names, so the two
+# must be enabled together: the webhook policy opens 9443 and the metrics policy
+# opens 8443. Enabling only one would silently drop traffic to the other port.
 - allow-webhook-traffic.yaml
-# allow-metrics-traffic.yaml is intentionally held back: it restricts the
-# /metrics endpoint to namespaces labeled 'metrics: enabled', which requires a
-# labeling decision (and matching e2e setup) that is out of scope for the
-# webhook fix (Q19). Re-add it here once that is settled.
-# - allow-metrics-traffic.yaml
+- allow-metrics-traffic.yaml

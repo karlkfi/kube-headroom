@@ -27,11 +27,11 @@ resources:
 #- ../prometheus
 # [METRICS] Expose the controller manager metrics service.
 - metrics_service.yaml
-# [NETWORK POLICY] Protect the Webhook Server with NetworkPolicy so the
-# kube-apiserver can reach the admission webhook (Q19). The bundle currently
-# ships only allow-webhook-traffic; the metrics policy is held back until its
-# 'metrics: enabled' namespace-labeling story is settled (see
-# ../network-policy/kustomization.yaml).
+# [NETWORK POLICY] Protect the /metrics endpoint and Webhook Server with
+# NetworkPolicy. Both policies select the controller-manager Pod, so they are
+# enabled together (see ../network-policy/kustomization.yaml). The webhook policy
+# admits the apiserver→webhook path on 9443 (Q19); the metrics policy admits
+# 8443 only from namespaces labeled 'metrics: enabled'.
 - ../network-policy
 
 # Uncomment the patches line if you enable Metrics
