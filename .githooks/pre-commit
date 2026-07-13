@@ -8,6 +8,13 @@ root="$(git rev-parse --show-toplevel)"
 # gofmt check on staged Go files (sub-second). Reject the commit if any staged
 # .go file is not gofmt-clean; run `gofmt -w <file>` and re-stage to fix.
 # Bypass a single commit with `git commit --no-verify`.
+#
+# Fast local subset, not the full gate: `make lint` (CI) additionally enforces
+# goimports via golangci-lint. We use bare gofmt here on purpose — it ships with
+# the Go toolchain (instant, no build step), whereas goimports only exists
+# inside the pinned golangci-lint binary and would make the hook slow and
+# dependent on `make golangci-lint` having been run. CI catches any import
+# ordering this misses.
 # NUL-delimited + a while-read loop so this stays correct under bash 3.2
 # (macOS default, which lacks `mapfile`) and for odd filenames.
 go_files=()
