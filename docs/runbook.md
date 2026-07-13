@@ -175,6 +175,74 @@ any `result="quota-denied"` (a namespace violates the quota preflight), and
 
 ---
 
+## Metrics TLS and scraper trust
+
+<a id="metrics-tls"></a>
+The manager serves `/metrics` over **HTTPS on `:8443`** by default
+(`--metrics-secure=true`), behind Kubernetes authn/authz (a scraper needs a
+token with `get` on the `/metrics` nonResourceURL). The **serving certificate**
+is what a scraper has to trust — get this wrong and Prometheus is stuck on a
+self-signed cert.
+
+Two ways the serving cert gets provisioned:
+
+- **Self-signed, in-process (default).** If no `--metrics-cert-path` is set,
+  controller-runtime generates a self-signed cert in memory at startup. It is
+  never written to a Secret and rotates on every restart, so scrapers **cannot
+  pin a CA** — they can only `insecureSkipVerify: true`. Fine for a quick look;
+  **not for production**, and it is exactly the "stuck on self-signed" trap.
+- **cert-manager-issued (recommended for production).** A cert-manager
+  `Certificate` (`config/certmanager/certificate-metrics.yaml`) issues into the
+  `metrics-server-cert` Secret; the manager mounts it and is pointed at it with
+  `--metrics-cert-path=/tmp/k8s-metrics-server/metrics-certs`. Now the cert is
+  stable, has the service DNS SANs, and its `ca.crt` is a real trust anchor a
+  scraper can verify against.
+
+### Enabling the cert-manager wiring
+
+Requires cert-manager installed in the cluster. In `config/`, uncomment the
+`CERTMANAGER`, `METRICS-WITH-CERTS`, and `PROMETHEUS-WITH-CERTS` markers — they
+are cross-referenced so all three must move together:
+
+1. **`config/default/kustomization.yaml`** — uncomment the
+   `[METRICS-WITH-CERTS]` patch (`cert_metrics_manager_patch.yaml`) so the
+   manager Deployment mounts `metrics-server-cert` and gets the
+   `--metrics-cert-path` arg, and uncomment the two metrics `replacements`
+   blocks that substitute the real `SERVICE_NAME.SERVICE_NAMESPACE` into the
+   `Certificate` SANs and the ServiceMonitor `serverName`. (`../certmanager` is
+   already in `resources`.)
+2. **`config/prometheus/kustomization.yaml`** — uncomment the
+   `[PROMETHEUS-WITH-CERTS]` `patches` block (`monitor_tls_patch.yaml`). This
+   flips the ServiceMonitor from `insecureSkipVerify: true` to verifying against
+   the `metrics-server-cert` Secret's `ca.crt` (and presenting the client cert).
+
+After uncommenting, `make build-installer` / `kubectl apply -k config/default`
+and confirm the manager logs `Initializing metrics certificate watcher using
+provided certificates` — that line means it picked up the mounted cert instead
+of self-signing.
+
+### Scrapers outside the ServiceMonitor path
+
+If you scrape with something other than the shipped `ServiceMonitor` (a raw
+Prometheus scrape config, the agent's own config, a different operator), point
+its `tls_config` at the same CA:
+
+- **CA to trust:** `ca.crt` from the `metrics-server-cert` Secret (or the
+  cert-manager Issuer's CA).
+- **`server_name`:** `<metrics-service>.<namespace>.svc` — must match a SAN on
+  the cert (the `Certificate` lists `.svc` and `.svc.cluster.local`), or
+  verification fails even with the right CA.
+- **Bearer token:** a ServiceAccount token with access to the metrics
+  nonResourceURL (the authn/authz filter rejects unauthenticated scrapes).
+
+Do **not** paper over a verification failure with `insecureSkipVerify: true` in
+production — that reintroduces the MITM exposure the cert wiring exists to close.
+A "x509: certificate signed by unknown authority" scrape error almost always
+means the manager is still self-signing (cert not mounted) or the scraper's CA /
+`server_name` doesn't match the issued cert.
+
+---
+
 ## Failure modes
 
 <a id="failure-modes"></a>
