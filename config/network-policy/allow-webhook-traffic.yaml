@@ -1,6 +1,11 @@
-# This NetworkPolicy allows ingress traffic to your webhook server running
-# as part of the controller-manager from specific namespaces and pods. CR(s) which uses webhooks
-# will only work when applied in namespaces labeled with 'webhook: enabled'
+# This NetworkPolicy allows ingress traffic to the webhook server running as
+# part of the controller-manager. The admission webhook is invoked by the
+# kube-apiserver, which runs on the control plane using host networking. That
+# traffic does NOT originate from a Pod in a labeled namespace, so it cannot be
+# matched by a namespaceSelector/podSelector — selecting only 'webhook: enabled'
+# namespaces would drop every admission request and break the webhook. Instead
+# we admit the webhook port from any source; the TLS serving cert (cert-manager)
+# and the apiserver's client authentication are what secure this path.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -17,11 +22,11 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # This allows ingress traffic from any namespace with the label webhook: enabled
-    - from:
-      - namespaceSelector:
-          matchLabels:
-            webhook: enabled # Only from namespaces with this label
-      ports:
-        - port: 443
+    # Allow ingress to the webhook server port from any source. The port is the
+    # container's target port (9443), since NetworkPolicy matches the destination
+    # port as seen by the Pod, not the Service port (443). No 'from' selector is
+    # set because the kube-apiserver source is host-network and outside the Pod
+    # network, so it cannot be selected by namespace or pod labels.
+    - ports:
+        - port: 9443
           protocol: TCP
