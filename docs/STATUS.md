@@ -6,7 +6,7 @@ the top of the Queue.
 **Status:** 🔲 ready · 🚫 blocked
 **Size:**   S = one session/PR · M = 2–3 sessions · L = needs a plan doc under `docs/plan/`
 **Labels:** `policy` `controller` `webhook` `observability` `tests` `docs` `infra` `security` `spike`
-**Next ID:** Q15
+**Next ID:** Q17
 
 ## Queue
 
@@ -24,6 +24,8 @@ the top of the Queue.
 | <a id="Q12"></a>Q12 | plan-hygiene CI check | `infra` | 🔲 | S | CI: every `docs/plan/*.md` is STATUS-referenced or archived, and Go code references no plan-doc paths (plan-hygiene). |
 | <a id="Q13"></a>Q13 | SECURITY.md + private vuln reporting | `security` | 🔲 | S | Add `SECURITY.md` and enable GitHub private vulnerability reporting; note the no-security-regression expectation. Low urgency (pre-release). |
 | <a id="Q14"></a>Q14 | gofmt-on-staged-Go pre-commit hook | `infra` | 🔲 | S | Extend `.githooks/pre-commit` to gofmt staged `.go` files (sub-second); complements the existing backlog-lint hook. |
+| <a id="Q15"></a>Q15 | Pin build tools in a `tools/` submodule | `infra` | 🔲 | S | Move the Makefile's go-installed tools (controller-gen, kustomize, golangci-lint, govulncheck) into a `tools/` submodule that pins versions via `//go:build tools`. Retires `govulncheck@latest`. |
+| <a id="Q16"></a>Q16 | Automate tool-version bumps | `infra` | 🚫 | S | Blocked by [Q15](#Q15). Add a Dependabot `gomod` entry for the `tools/` module so tool versions get automated weekly bump PRs — impossible while they're Makefile string vars. |
 
 ## Deferred
 
