@@ -21,9 +21,11 @@ type HeadroomConfigReconciler struct {
 // +kubebuilder:rbac:groups=kube-headroom.dev,resources=headroomconfigs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kube-headroom.dev,resources=headroomconfigs/finalizers,verbs=update
 
-// Cluster-wide permissions the node reconciler (Q4) needs. The only mutating
-// verb on pods is patch on the resize subresource — never update/delete (§9.4.5).
-// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch
+// Cluster-wide permissions the node reconciler (Q4/Q7) needs. Pod writes are
+// limited to two paths: patch on the resize subresource for the CPU limit, and
+// patch on the pod's metadata for the kube-headroom.dev/status annotation (§8.1
+// two-command explainability) — never update/delete, never any other field.
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;patch
 // +kubebuilder:rbac:groups="",resources=pods/resize,verbs=patch
 // +kubebuilder:rbac:groups="",resources=nodes,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch

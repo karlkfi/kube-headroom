@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -54,6 +55,11 @@ type NodeReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
+	// Recorder emits CPULimitAdjusted / ResizeInfeasible / ResizeForbidden events
+	// on managed pods (§8.1) via the events/v1 API. A nil Recorder is tolerated
+	// (events are skipped).
+	Recorder events.EventRecorder
+
 	// FieldManager is the SSA owner for limits.cpu (defaults to "headroom").
 	FieldManager string
 	// DebouncePeriod delays enqueued node keys so a rollout computes once.
@@ -87,6 +93,11 @@ type resolvedConfig struct {
 // node name; the request namespace is always empty.
 func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
+
+	// Measure wall-clock reconcile latency (§8.1). Real time, not the injectable
+	// clock (which tests freeze for backoff/timestamp determinism).
+	start := time.Now()
+	defer func() { reconcileDuration.Observe(time.Since(start).Seconds()) }()
 
 	cfg, err := r.loadConfig(ctx)
 	if err != nil {
@@ -125,23 +136,42 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		"allocatableMilli", stats.AllocatableMilli, "slackMilli", stats.SlackMilli,
 		"factor", stats.Factor, "managedPods", stats.ManagedPods, "decisions", len(decisions))
 
+	// Node-level policy inputs as gauges — computed even for an unmanaged node,
+	// so slack/factor are observable everywhere (§8.1).
+	nodeFactor.WithLabelValues(req.Name).Set(stats.Factor)
+	nodeSlackCores.WithLabelValues(req.Name).Set(float64(stats.SlackMilli) / 1000.0)
+	nodeManagedPods.WithLabelValues(req.Name).Set(float64(stats.ManagedPods))
+
+	nodePods := len(inputs)
 	limiter := r.limiterFor(req.Name, cfg.perNodePPS)
 	rateLimited := false
 	for _, d := range decisions {
-		if !d.Apply {
-			continue
-		}
 		pod := byKey[d.Key]
 		if pod == nil {
 			continue
 		}
+
+		// Every managed pod carries a status annotation explaining its current
+		// ceiling, refreshed on change in dry-run and live alike (§8.1, §9.3).
+		// Metadata only — not a resize — so it is exempt from the dry-run patch ban.
+		status := buildPodStatus(stats, nodePods, d.TargetLimitMilli, cfg.dryRun)
+		if err := r.writePodStatus(ctx, pod, status); err != nil {
+			log.V(1).Info("status annotation write failed", "pod", d.Key, "err", err.Error())
+		}
+
+		if !d.Apply {
+			continue
+		}
+
+		currentMilli := podCurrentLimitMilli(resizableContainers(pod))
 		if cfg.dryRun {
-			// Dry-run meters what would change but issues no patch (§9.3): it is the
-			// default, safe adoption path. Metrics/annotations for the same signal
-			// land in Q7; here the record is the log line.
+			// Dry-run meters and annotates what would change but issues no patch
+			// (§9.3): the default, safe adoption path.
+			resizesTotal.WithLabelValues(resultDryRun).Inc()
 			log.Info("dry-run: would resize", "pod", d.Key,
-				"currentMilli", podCurrentLimitMilli(resizableContainers(pod)),
-				"targetMilli", d.TargetLimitMilli, "reason", d.Reason)
+				"currentMilli", currentMilli, "targetMilli", d.TargetLimitMilli, "reason", d.Reason)
+			r.recordEvent(pod, corev1.EventTypeNormal, reasonCPULimitAdjusted,
+				adjustMessage(currentMilli, d.TargetLimitMilli, stats, true))
 			continue
 		}
 		// Per-node token bucket bounds write pressure (§6.2 step 4c, §7). When the
@@ -151,12 +181,16 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			break
 		}
 		if err := r.applyResize(ctx, pod, d.TargetLimitMilli); err != nil {
-			if res, handled := r.classifyResizeError(ctx, d.Key, err); handled {
+			if res, handled := r.classifyResizeError(ctx, pod, d.Key, err); handled {
 				rateLimited = rateLimited || res
 				continue
 			}
+			resizesTotal.WithLabelValues(resultError).Inc()
 			return ctrl.Result{}, fmt.Errorf("resize %s: %w", d.Key, err)
 		}
+		resizesTotal.WithLabelValues(resultApplied).Inc()
+		r.recordEvent(pod, corev1.EventTypeNormal, reasonCPULimitAdjusted,
+			adjustMessage(currentMilli, d.TargetLimitMilli, stats, false))
 	}
 
 	if rateLimited {
@@ -206,7 +240,13 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 			// A managed pod whose kubelet refused the last resize should back off
 			// (§6.4); detect the Infeasible condition here so a steady reconcile
 			// applies the window without needing the patch to fail synchronously.
+			// This branch is reached only when the pod is not already backed off,
+			// so the event and counter fire once per backoff window, not per
+			// reconcile — a sustained count is the alerting signal (§6.4).
 			if podResizeInfeasible(pod) {
+				resizesTotal.WithLabelValues(resultInfeasible).Inc()
+				r.recordEvent(pod, corev1.EventTypeWarning, reasonResizeInfeasible,
+					fmt.Sprintf("kubelet reports the CPU-limit resize is infeasible; backing off %s", r.backoffPeriod()))
 				r.setBackoff(pod)
 			}
 		}
@@ -259,21 +299,26 @@ func (r *NodeReconciler) applyResize(ctx context.Context, pod *corev1.Pod, targe
 		client.FieldOwner(r.fieldManager()), client.ForceOwnership)
 }
 
-// classifyResizeError maps a resize patch error to the §6.4 outcome table. It
-// returns (rateLimited, handled): handled=false means the error should bubble up
-// and requeue the node with backoff.
-func (r *NodeReconciler) classifyResizeError(ctx context.Context, key string, err error) (bool, bool) {
+// classifyResizeError maps a resize patch error to the §6.4 outcome table,
+// metering each outcome and emitting a warning event for the refusals an
+// operator should see. It returns (rateLimited, handled): handled=false means
+// the error should bubble up and requeue the node with backoff.
+func (r *NodeReconciler) classifyResizeError(ctx context.Context, pod *corev1.Pod, key string, err error) (bool, bool) {
 	log := logf.FromContext(ctx)
 	switch {
 	case apierrors.IsNotFound(err):
 		return false, true // pod vanished mid-reconcile; nothing to do
 	case apierrors.IsConflict(err):
 		// Stale generation: the next reconcile recomputes from current state.
+		resizesTotal.WithLabelValues(resultConflict).Inc()
 		log.V(1).Info("resize conflict, will requeue", "pod", key)
 		return true, true
 	case apierrors.IsForbidden(err):
 		// Quota limits.cpu 403 (spike Q2c): treat like Infeasible — back off.
+		resizesTotal.WithLabelValues(resultQuotaDenied).Inc()
 		log.Info("resize forbidden (likely limits.cpu quota); backing off", "pod", key, "err", err.Error())
+		r.recordEvent(pod, corev1.EventTypeWarning, reasonResizeForbidden,
+			fmt.Sprintf("CPU-limit resize forbidden (likely a limits.cpu ResourceQuota); backing off %s", r.backoffPeriod()))
 		r.setBackoffKey(key)
 		return false, true
 	default:
@@ -349,8 +394,12 @@ func (r *NodeReconciler) limiterFor(node string, pps float64) *rate.Limiter {
 
 func (r *NodeReconciler) forgetNode(node string) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	delete(r.limiters, node)
+	r.mu.Unlock()
+	// Drop the node's gauge series so a deleted node doesn't linger in /metrics.
+	nodeFactor.DeleteLabelValues(node)
+	nodeSlackCores.DeleteLabelValues(node)
+	nodeManagedPods.DeleteLabelValues(node)
 }
 
 // --- backoff state ----------------------------------------------------------
