@@ -10,8 +10,10 @@ is the agent-facing companion to this guide; the two intentionally overlap.
   (`feat/…`, `fix/…`, `chore/…`, `docs/…`), push, and open a PR — CI runs there.
 - **Conventional Commits**: `feat:`, `fix:`, `chore:`, `docs:`, `test:`,
   `ci:`. Keep commits small and focused; never commit knowingly-broken code.
-- **Design-first.** For non-trivial work, read the design (`docs/design.md` once
-  adopted; until then `tmp/project-plan.md`) and any relevant `docs/plan/` doc.
+- **Design-first.** For non-trivial work, read the [design doc](docs/design.md)
+  and any relevant `docs/plan/` doc. User-facing behavior is documented in
+  [`docs/runbook.md`](docs/runbook.md), [`docs/tenant-guide.md`](docs/tenant-guide.md),
+  and [`docs/applicability.md`](docs/applicability.md).
 
 ## Before you open a PR
 
