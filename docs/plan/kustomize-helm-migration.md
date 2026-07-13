@@ -133,9 +133,10 @@ chart.
 
 ## Depends on / sequencing
 
-- Land the open `config/`-touching items first to avoid rebasing the chart
-  onto a moving base: Q17 (RBAC narrowing), Q18/Q19 (webhook/network-policy,
-  PRs #33/#32 in flight), Q20 (prod defaults). Start after they settle.
+- The `config/`-touching items this migration builds on have **all landed** —
+  Q17 (RBAC narrowing), Q18 (multiplier bounds), Q19 (webhook NetworkPolicy),
+  Q20 (prod defaults). The chart ports the current `config/` tree; no further
+  base churn is expected, so the migration can start when scheduled.
 - Design context: `docs/design.md` (§7 informers, §9.3 singleton). Install
   docs to update: `docs/runbook.md`, `README`, and the `config/` layout note
   in `CLAUDE.md`.
