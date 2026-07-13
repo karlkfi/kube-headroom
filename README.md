@@ -103,5 +103,14 @@ make manifests generate      # regenerate CRDs/RBAC/deepcopy after API changes
 make run                     # run the manager against the current kubecontext
 ```
 
-The full design document is being adopted into `docs/design.md` (tracked in the
-backlog); until then, `docs/plan/` holds plan docs for in-flight work.
+## Documentation
+
+- **[Design doc](docs/design.md)** — architecture, policy, and rationale (the
+  source of truth).
+- **[Operator runbook](docs/runbook.md)** — preflight, rollout, and day-2 triage.
+- **[Tenant guide](docs/tenant-guide.md)** — the contract for app teams, plus the
+  VPA coexistence recipe.
+- **[Applicability matrix](docs/applicability.md)** — when to use Headroom, and
+  when not to.
+
+In-flight plan docs live under `docs/plan/`.

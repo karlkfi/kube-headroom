@@ -3,8 +3,9 @@
 **Headroom** is a Kubernetes controller that dynamically sets container **CPU
 limits** as a function of node slack, recomputed on scheduling events, via the
 GA in-place pod resize subresource. Requests-driven (deterministic, low-churn),
-CPU-only by design, opt-in per namespace. Full design: `docs/design.md` (until
-adopted, `tmp/project-plan.md`).
+CPU-only by design, opt-in per namespace. Full design: `docs/design.md`. User
+docs: `docs/runbook.md` (operators), `docs/tenant-guide.md` (app teams),
+`docs/applicability.md` (when to use / not use).
 
 ## Workflow
 
