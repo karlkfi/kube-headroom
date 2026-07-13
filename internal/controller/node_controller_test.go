@@ -1,15 +1,18 @@
 package controller
 
 import (
+	"encoding/json"
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
@@ -147,8 +150,23 @@ var _ = Describe("NodeReconciler", func() {
 		return res
 	}
 
+	// podStatusAnnotation reads and parses the kube-headroom.dev/status annotation.
+	podStatusAnnotation := func(ns, name string) map[string]any {
+		var pod corev1.Pod
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, &pod)).To(Succeed())
+		raw := pod.Annotations[kubeheadroomv1alpha1.AnnotationStatus]
+		if raw == "" {
+			return nil
+		}
+		var st map[string]any
+		Expect(json.Unmarshal([]byte(raw), &st)).To(Succeed())
+		return st
+	}
+
 	BeforeEach(func() {
-		r = &NodeReconciler{Client: k8sClient, Scheme: k8sClient.Scheme()}
+		// A buffered fake recorder so specs can drain events without blocking the
+		// reconcile; specs that assert events swap in their own.
+		r = &NodeReconciler{Client: k8sClient, Scheme: k8sClient.Scheme(), Recorder: record.NewFakeRecorder(64)}
 	})
 
 	AfterEach(func() {
@@ -267,8 +285,12 @@ var _ = Describe("NodeReconciler", func() {
 		node := nextNode()
 		makeNode(node, 8)
 		// Born at 8000m — exactly the computed target for a solo 1000m-request pod,
-		// so the deadband suppresses any write.
+		// so the deadband suppresses any resize.
 		makeBurstablePod(nsA, "atrest", node, 1000, 8000)
+
+		// First reconcile still writes the status annotation once (§8.1); capture
+		// the resource version after it settles.
+		reconcileNode(node)
 
 		var before corev1.Pod
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: nsA, Name: "atrest"}, &before)).To(Succeed())
@@ -279,7 +301,9 @@ var _ = Describe("NodeReconciler", func() {
 
 		var after corev1.Pod
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: nsA, Name: "atrest"}, &after)).To(Succeed())
-		Expect(after.ResourceVersion).To(Equal(rv), "at-target reconcile should issue no patch")
+		Expect(after.ResourceVersion).To(Equal(rv), "at-target reconcile should issue no further patch")
+		Expect(after.Spec.Containers[0].Resources.Limits.Cpu().MilliValue()).To(Equal(int64(8000)),
+			"limit must be untouched by the deadband")
 	})
 
 	It("issues zero patches at steady state after applying (deadband holds)", func() {
@@ -303,5 +327,96 @@ var _ = Describe("NodeReconciler", func() {
 		var after corev1.Pod
 		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: nsA, Name: "steady"}, &after)).To(Succeed())
 		Expect(after.ResourceVersion).To(Equal(rv), "steady-state reconcile should issue no patch")
+	})
+
+	It("annotates a managed pod with its computed status (§8.1)", func() {
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(nsA, "annotated", node, 1000, 0)
+
+		reconcileNode(node)
+		Eventually(func() int64 { return podLimitMilli(nsA, "annotated") }).Should(Equal(int64(8000)))
+
+		st := podStatusAnnotation(nsA, "annotated")
+		Expect(st).NotTo(BeNil())
+		Expect(st["policy"]).To(Equal("proportional-v1"))
+		Expect(st["targetLimit"]).To(Equal("8000m"))
+		Expect(st).To(HaveKeyWithValue("nodePods", BeNumerically("==", 1)))
+		Expect(st).To(HaveKey("factor"))
+		Expect(st).To(HaveKey("slack"))
+		Expect(st).To(HaveKey("managedRequests"))
+		Expect(st).To(HaveKey("computedAt"))
+		// dryRun omitempty: absent (not false) in live mode.
+		Expect(st).NotTo(HaveKey("dryRun"))
+	})
+
+	It("annotates in dry-run without resizing, marking dryRun (§9.3)", func() {
+		applyConfig(true)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(nsA, "dryannot", node, 1000, 0)
+
+		reconcileNode(node)
+
+		Eventually(func() map[string]any { return podStatusAnnotation(nsA, "dryannot") }).ShouldNot(BeNil())
+		st := podStatusAnnotation(nsA, "dryannot")
+		Expect(st).To(HaveKeyWithValue("dryRun", true))
+		Expect(st["targetLimit"]).To(Equal("8000m"))
+		// Annotated, but the limit itself was never patched.
+		Expect(podLimitMilli(nsA, "dryannot")).To(Equal(int64(0)))
+	})
+
+	It("emits a CPULimitAdjusted event on resize (§8.1)", func() {
+		rec := record.NewFakeRecorder(16)
+		r.Recorder = rec
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(nsA, "evented", node, 1000, 0)
+
+		reconcileNode(node)
+		Eventually(func() int64 { return podLimitMilli(nsA, "evented") }).Should(Equal(int64(8000)))
+
+		Eventually(rec.Events).Should(Receive(And(
+			ContainSubstring(reasonCPULimitAdjusted),
+			ContainSubstring("→ 8000m"),
+		)))
+	})
+
+	It("records node gauges and the applied resize counter (§8.1)", func() {
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(nsA, "metered", node, 1000, 0)
+
+		before := testutil.ToFloat64(resizesTotal.WithLabelValues(resultApplied))
+		reconcileNode(node)
+		Eventually(func() int64 { return podLimitMilli(nsA, "metered") }).Should(Equal(int64(8000)))
+
+		// Slack = 8 cores allocatable − 1 core requested = 7 cores; factor > 1.
+		Expect(testutil.ToFloat64(nodeSlackCores.WithLabelValues(node))).To(BeNumerically("~", 7.0, 0.001))
+		Expect(testutil.ToFloat64(nodeFactor.WithLabelValues(node))).To(BeNumerically(">", 1.0))
+		Expect(testutil.ToFloat64(nodeManagedPods.WithLabelValues(node))).To(BeNumerically("==", 1))
+		Expect(testutil.ToFloat64(resizesTotal.WithLabelValues(resultApplied))).To(BeNumerically(">", before))
+	})
+
+	It("meters dry-run decisions under result=dry-run, not applied (§9.3)", func() {
+		applyConfig(true)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(nsA, "drymeter", node, 1000, 0)
+
+		beforeDry := testutil.ToFloat64(resizesTotal.WithLabelValues(resultDryRun))
+		beforeApplied := testutil.ToFloat64(resizesTotal.WithLabelValues(resultApplied))
+		reconcileNode(node)
+
+		Expect(testutil.ToFloat64(resizesTotal.WithLabelValues(resultDryRun))).To(BeNumerically(">", beforeDry))
+		Expect(testutil.ToFloat64(resizesTotal.WithLabelValues(resultApplied))).To(Equal(beforeApplied))
 	})
 })
