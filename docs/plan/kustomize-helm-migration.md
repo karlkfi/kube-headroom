@@ -105,6 +105,32 @@ drifts from the markers.
   `app.kubernetes.io/managed-by: Helm`, or uninstall/reinstall (the CRD keep
   policy protects live CRs).
 
+## CRD API versioning (the future v1beta1 bump)
+
+The API version is **not** encoded in the chart name or path. A CRD is
+identified by group+kind (`headroomconfigs.kube-headroom.dev`) and one CRD
+object serves many API versions at once via `spec.versions[]` (exactly one
+`storage: true`). Moving v1alpha1 → v1beta1 is an *update to that same CRD*,
+shipped as a `helm upgrade` of the single `kube-headroom-crds` chart — not a new
+chart.
+
+- A `-v1alpha1`-suffixed chart would be actively harmful: two charts both
+  templating `headroomconfigs.kube-headroom.dev` collide on Helm's
+  `meta.helm.sh/release-*` ownership annotations (only one release may own an
+  object), and `resource-policy: keep` guarantees the old chart's CRD lingers to
+  trigger exactly that conflict.
+- The version axis that moves is the chart's own **Chart version / appVersion**
+  (semver), bumped when the schema changes; consumers pin a chart version.
+- What the bump will actually need (single crds chart + operator, tracked as a
+  follow-up — **out of scope for Q21**, which ships v1alpha1 only):
+  - add `v1beta1` to `spec.versions` as served + storage, keep `v1alpha1` served
+    with `deprecated: true` for a release or two;
+  - a **conversion webhook** (`spec.conversion.strategy: Webhook`) served by the
+    manager and CA-injected like the admission webhook, if the schemas aren't
+    structurally identical;
+  - a **storage-version migration** (re-write stored objects to v1beta1) before
+    dropping `v1alpha1` from `status.storedVersions` and the served set.
+
 ## Depends on / sequencing
 
 - Land the open `config/`-touching items first to avoid rebasing the chart
