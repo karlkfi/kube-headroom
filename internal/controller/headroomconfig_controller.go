@@ -17,9 +17,10 @@ type HeadroomConfigReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-// +kubebuilder:rbac:groups=kube-headroom.dev,resources=headroomconfigs,verbs=get;list;watch;create;update;patch;delete
+// The controller only reads the cluster-scoped singleton config and writes its
+// status — no create/update/delete on the object, no finalizer. Least privilege.
+// +kubebuilder:rbac:groups=kube-headroom.dev,resources=headroomconfigs,verbs=get;list;watch
 // +kubebuilder:rbac:groups=kube-headroom.dev,resources=headroomconfigs/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=kube-headroom.dev,resources=headroomconfigs/finalizers,verbs=update
 
 // Cluster-wide permissions the node reconciler (Q4/Q7) needs. Pod writes are
 // limited to two paths: patch on the resize subresource for the CPU limit, and

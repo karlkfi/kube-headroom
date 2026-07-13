@@ -49,19 +49,9 @@ rules:
   resources:
   - headroomconfigs
   verbs:
-  - create
-  - delete
   - get
   - list
-  - patch
-  - update
   - watch
-- apiGroups:
-  - kube-headroom.dev
-  resources:
-  - headroomconfigs/finalizers
-  verbs:
-  - update
 - apiGroups:
   - kube-headroom.dev
   resources:
