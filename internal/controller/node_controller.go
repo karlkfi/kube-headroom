@@ -1,0 +1,488 @@
+package controller
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"sync"
+	"time"
+
+	"golang.org/x/time/rate"
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	logf "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+
+	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
+	"github.com/karlkfi/kube-headroom/internal/policy"
+)
+
+const (
+	// podNodeNameIndex is the field-index key the reconciler lists pods by so it
+	// can find every pod bound to a node without a full-cache scan.
+	podNodeNameIndex = "spec.nodeName"
+
+	// defaultFieldManager is the stable SSA field owner for the CPU-limit leaf
+	// (§6.2, §9.4.1). Force=true wrests limits.cpu from the pod's creator once and
+	// then holds it without churn (spike Q2d).
+	defaultFieldManager = "headroom"
+
+	// defaultDebouncePeriod collapses a burst of scheduling events on one node
+	// into a single recompute (§6.2). Used when HeadroomConfig is absent.
+	defaultDebouncePeriod = 2 * time.Second
+
+	// defaultBackoffPeriod is how long a pod is skipped after a resize is refused
+	// (quota 403 or kubelet Infeasible) before Headroom retries it (§6.4).
+	defaultBackoffPeriod = 60 * time.Second
+)
+
+// NodeReconciler recomputes and applies managed CPU limits for every pod bound
+// to a node, the node being the unit of reconciliation (§6.2). It is the wiring
+// around the pure policy core in internal/policy.
+type NodeReconciler struct {
+	client.Client
+	Scheme *runtime.Scheme
+
+	// FieldManager is the SSA owner for limits.cpu (defaults to "headroom").
+	FieldManager string
+	// DebouncePeriod delays enqueued node keys so a rollout computes once.
+	DebouncePeriod time.Duration
+	// BackoffPeriod is the ineligibility window after a refused resize.
+	BackoffPeriod time.Duration
+
+	mu       sync.Mutex
+	limiters map[string]*rate.Limiter // node name -> per-node patch token bucket
+	backoff  sync.Map                 // pod key (ns/name) -> time.Time expiry
+
+	// now is overridable in tests; defaults to time.Now.
+	now func() time.Time
+}
+
+// resolvedConfig is HeadroomConfig reduced to what a reconcile needs: the pure
+// policy knobs plus the operational toggles the reconciler itself acts on.
+type resolvedConfig struct {
+	policy         policy.Config
+	spec           kubeheadroomv1alpha1.HeadroomConfigSpec
+	dryRun         bool
+	perNodePPS     float64
+	debouncePeriod time.Duration
+}
+
+// The RBAC this reconciler needs (pods, pods/resize, nodes, namespaces) is
+// declared once on HeadroomConfigReconciler; see headroomconfig_controller.go.
+
+// Reconcile recomputes every managed pod's CPU limit for one node and applies
+// the decisions the policy says to apply (§6.2 step 4). The request name is a
+// node name; the request namespace is always empty.
+func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	log := logf.FromContext(ctx)
+
+	cfg, err := r.loadConfig(ctx)
+	if err != nil {
+		return ctrl.Result{}, fmt.Errorf("load config: %w", err)
+	}
+
+	var node corev1.Node
+	if err := r.Get(ctx, types.NamespacedName{Name: req.Name}, &node); err != nil {
+		if apierrors.IsNotFound(err) {
+			r.forgetNode(req.Name) // node gone: drop its limiter state (§6.2 step 2)
+			return ctrl.Result{}, nil
+		}
+		return ctrl.Result{}, fmt.Errorf("get node %s: %w", req.Name, err)
+	}
+	allocatableMilli := node.Status.Allocatable.Cpu().MilliValue()
+
+	var podList corev1.PodList
+	if err := r.List(ctx, &podList, client.MatchingFields{podNodeNameIndex: req.Name}); err != nil {
+		return ctrl.Result{}, fmt.Errorf("list pods on node %s: %w", req.Name, err)
+	}
+
+	inputs, byKey, err := r.buildInputs(ctx, cfg, podList.Items)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	stats, decisions := policy.Compute(allocatableMilli, inputs, cfg.policy)
+	log.V(1).Info("computed node targets", "node", req.Name,
+		"allocatableMilli", stats.AllocatableMilli, "slackMilli", stats.SlackMilli,
+		"factor", stats.Factor, "managedPods", stats.ManagedPods, "decisions", len(decisions))
+
+	limiter := r.limiterFor(req.Name, cfg.perNodePPS)
+	rateLimited := false
+	for _, d := range decisions {
+		if !d.Apply {
+			continue
+		}
+		pod := byKey[d.Key]
+		if pod == nil {
+			continue
+		}
+		if cfg.dryRun {
+			// Dry-run computes and (in Q7) meters, but issues no patch (§9.3).
+			log.V(1).Info("dry-run: would resize", "pod", d.Key,
+				"targetMilli", d.TargetLimitMilli, "reason", d.Reason)
+			continue
+		}
+		// Per-node token bucket bounds write pressure (§6.2 step 4c, §7). When the
+		// bucket is empty, apply the rest on a follow-up reconcile rather than block.
+		if !limiter.Allow() {
+			rateLimited = true
+			break
+		}
+		if err := r.applyResize(ctx, pod, d.TargetLimitMilli); err != nil {
+			if res, handled := r.classifyResizeError(ctx, d.Key, err); handled {
+				rateLimited = rateLimited || res
+				continue
+			}
+			return ctrl.Result{}, fmt.Errorf("resize %s: %w", d.Key, err)
+		}
+	}
+
+	if rateLimited {
+		return ctrl.Result{RequeueAfter: time.Second}, nil
+	}
+	return ctrl.Result{}, nil
+}
+
+// buildInputs turns the pods on a node into policy inputs. Every non-terminal
+// pod contributes to slack (§5.4); only eligible, namespace-enrolled, non-backed
+// -off pods are marked Managed and thus receive a limit. It returns the inputs
+// and a key→pod map so decisions can be applied without re-fetching.
+func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, pods []corev1.Pod) ([]policy.PodInput, map[string]*corev1.Pod, error) {
+	nsManaged := map[string]bool{}
+	inputs := make([]policy.PodInput, 0, len(pods))
+	byKey := make(map[string]*corev1.Pod, len(pods))
+
+	for i := range pods {
+		pod := &pods[i]
+		if podTerminal(pod) {
+			continue // terminal pods hold no CPU; they neither book slack nor get managed
+		}
+		rcs := resizableContainers(pod)
+
+		managed := false
+		if eligible(pod, rcs) && !r.inBackoff(pod) {
+			ok, cached := nsManaged[pod.Namespace]
+			if !cached {
+				var ns corev1.Namespace
+				if err := r.Get(ctx, types.NamespacedName{Name: pod.Namespace}, &ns); err != nil {
+					if !apierrors.IsNotFound(err) {
+						return nil, nil, fmt.Errorf("get namespace %s: %w", pod.Namespace, err)
+					}
+					ok = false
+				} else {
+					ok = namespaceManaged(&ns, &cfg.spec)
+				}
+				nsManaged[pod.Namespace] = ok
+			}
+			managed = ok
+		}
+
+		inputs = append(inputs, buildPodInput(pod, rcs, managed))
+		byKey[pod.Namespace+"/"+pod.Name] = pod
+
+		if managed {
+			// A managed pod whose kubelet refused the last resize should back off
+			// (§6.4); detect the Infeasible condition here so a steady reconcile
+			// applies the window without needing the patch to fail synchronously.
+			if podResizeInfeasible(pod) {
+				r.setBackoff(pod)
+			}
+		}
+	}
+	return inputs, byKey, nil
+}
+
+// applyResize patches only limits.cpu of the pod's resizable containers via the
+// resize subresource with server-side apply (§9.4.1). The pod target is split
+// pro-rata across containers so their limits sum to the target.
+func (r *NodeReconciler) applyResize(ctx context.Context, pod *corev1.Pod, targetMilli int64) error {
+	rcs := resizableContainers(pod)
+	perContainer := splitLimit(targetMilli, rcs)
+	if len(perContainer) == 0 {
+		return nil
+	}
+
+	containers := make([]any, 0, len(perContainer))
+	for _, c := range rcs {
+		m, ok := perContainer[c.Name]
+		if !ok {
+			continue
+		}
+		containers = append(containers, map[string]any{
+			"name": c.Name,
+			"resources": map[string]any{
+				"limits": map[string]any{
+					"cpu": resource.NewMilliQuantity(m, resource.DecimalSI).String(),
+				},
+			},
+		})
+	}
+
+	obj := map[string]any{
+		"apiVersion": "v1",
+		"kind":       "Pod",
+		"metadata": map[string]any{
+			"name":      pod.Name,
+			"namespace": pod.Namespace,
+		},
+		"spec": map[string]any{"containers": containers},
+	}
+	data, err := json.Marshal(obj)
+	if err != nil {
+		return fmt.Errorf("marshal apply body: %w", err)
+	}
+
+	u := &unstructured.Unstructured{Object: obj}
+	return r.SubResource("resize").Patch(ctx, u, client.RawPatch(types.ApplyPatchType, data),
+		client.FieldOwner(r.fieldManager()), client.ForceOwnership)
+}
+
+// classifyResizeError maps a resize patch error to the §6.4 outcome table. It
+// returns (rateLimited, handled): handled=false means the error should bubble up
+// and requeue the node with backoff.
+func (r *NodeReconciler) classifyResizeError(ctx context.Context, key string, err error) (bool, bool) {
+	log := logf.FromContext(ctx)
+	switch {
+	case apierrors.IsNotFound(err):
+		return false, true // pod vanished mid-reconcile; nothing to do
+	case apierrors.IsConflict(err):
+		// Stale generation: the next reconcile recomputes from current state.
+		log.V(1).Info("resize conflict, will requeue", "pod", key)
+		return true, true
+	case apierrors.IsForbidden(err):
+		// Quota limits.cpu 403 (spike Q2c): treat like Infeasible — back off.
+		log.Info("resize forbidden (likely limits.cpu quota); backing off", "pod", key, "err", err.Error())
+		r.setBackoffKey(key)
+		return false, true
+	default:
+		return false, false
+	}
+}
+
+// loadConfig reads the HeadroomConfig singleton and reduces it to a
+// resolvedConfig. When the config is absent, Headroom runs with documented
+// defaults in dry-run (safe, observable) mode (§9.3).
+func (r *NodeReconciler) loadConfig(ctx context.Context) (*resolvedConfig, error) {
+	var hc kubeheadroomv1alpha1.HeadroomConfig
+	err := r.Get(ctx, types.NamespacedName{Name: kubeheadroomv1alpha1.SingletonName}, &hc)
+	if apierrors.IsNotFound(err) {
+		return &resolvedConfig{
+			policy:         policy.DefaultConfig(),
+			dryRun:         true,
+			perNodePPS:     10,
+			debouncePeriod: r.debouncePeriod(),
+		}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return resolveConfig(&hc, r.debouncePeriod()), nil
+}
+
+// resolveConfig converts a HeadroomConfig into a resolvedConfig. CRD defaults are
+// applied by the apiserver, so zero values here mean "explicitly set to zero".
+func resolveConfig(hc *kubeheadroomv1alpha1.HeadroomConfig, fallbackDebounce time.Duration) *resolvedConfig {
+	s := hc.Spec
+	cfg := policy.Config{
+		MinBurstFloorMilli: s.MinBurstFloor.MilliValue(),
+		MaxMultiplier:      s.MaxMultiplier.AsApproximateFloat64(),
+		DeadbandGrow:       float64(s.Deadband.GrowPercent) / 100.0,
+		DeadbandShrink:     float64(s.Deadband.ShrinkPercent) / 100.0,
+		QuantumMilli:       s.Quantum.MilliValue(),
+	}
+	dryRun := true
+	if s.DryRun != nil {
+		dryRun = *s.DryRun
+	}
+	perNodePPS := float64(s.RateLimits.PerNodePatchesPerSecond)
+	if perNodePPS <= 0 {
+		perNodePPS = 10
+	}
+	debounce := s.DebouncePeriod.Duration
+	if debounce <= 0 {
+		debounce = fallbackDebounce
+	}
+	return &resolvedConfig{policy: cfg, spec: s, dryRun: dryRun, perNodePPS: perNodePPS, debouncePeriod: debounce}
+}
+
+// --- per-node rate limiting -------------------------------------------------
+
+func (r *NodeReconciler) limiterFor(node string, pps float64) *rate.Limiter {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.limiters == nil {
+		r.limiters = map[string]*rate.Limiter{}
+	}
+	lim, ok := r.limiters[node]
+	if !ok {
+		// Burst == steady rate: absorb a rollout wave up to one second of budget.
+		lim = rate.NewLimiter(rate.Limit(pps), int(pps))
+		r.limiters[node] = lim
+	} else if lim.Limit() != rate.Limit(pps) {
+		lim.SetLimit(rate.Limit(pps))
+		lim.SetBurst(int(pps))
+	}
+	return lim
+}
+
+func (r *NodeReconciler) forgetNode(node string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.limiters, node)
+}
+
+// --- backoff state ----------------------------------------------------------
+
+func (r *NodeReconciler) inBackoff(pod *corev1.Pod) bool {
+	v, ok := r.backoff.Load(pod.Namespace + "/" + pod.Name)
+	if !ok {
+		return false
+	}
+	until := v.(time.Time)
+	if r.clock().After(until) {
+		r.backoff.Delete(pod.Namespace + "/" + pod.Name)
+		return false
+	}
+	return true
+}
+
+func (r *NodeReconciler) setBackoff(pod *corev1.Pod) { r.setBackoffKey(pod.Namespace + "/" + pod.Name) }
+
+func (r *NodeReconciler) setBackoffKey(key string) {
+	r.backoff.Store(key, r.clock().Add(r.backoffPeriod()))
+}
+
+// --- small accessors with defaults ------------------------------------------
+
+func (r *NodeReconciler) fieldManager() string {
+	if r.FieldManager != "" {
+		return r.FieldManager
+	}
+	return defaultFieldManager
+}
+
+func (r *NodeReconciler) debouncePeriod() time.Duration {
+	if r.DebouncePeriod > 0 {
+		return r.DebouncePeriod
+	}
+	return defaultDebouncePeriod
+}
+
+func (r *NodeReconciler) backoffPeriod() time.Duration {
+	if r.BackoffPeriod > 0 {
+		return r.BackoffPeriod
+	}
+	return defaultBackoffPeriod
+}
+
+func (r *NodeReconciler) clock() time.Time {
+	if r.now != nil {
+		return r.now()
+	}
+	return time.Now()
+}
+
+// podResizeInfeasible reports whether the kubelet has marked a pending resize
+// Infeasible (§6.4) via the PodResizePending condition.
+func podResizeInfeasible(pod *corev1.Pod) bool {
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodResizePending && c.Reason == corev1.PodReasonInfeasible {
+			return true
+		}
+	}
+	return false
+}
+
+// SetupWithManager registers the node field index and the pod/node watches that
+// feed node keys into the reconciler, debounced per §6.2.
+func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, podNodeNameIndex,
+		func(o client.Object) []string {
+			nodeName := o.(*corev1.Pod).Spec.NodeName
+			if nodeName == "" {
+				return nil
+			}
+			return []string{nodeName}
+		}); err != nil {
+		return fmt.Errorf("index pods by %s: %w", podNodeNameIndex, err)
+	}
+
+	return ctrl.NewControllerManagedBy(mgr).
+		Named("node").
+		Watches(&corev1.Pod{}, r.podEventHandler(),
+			builder.WithPredicates(predicate.Funcs{UpdateFunc: podUpdateRelevant})).
+		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(nodeToRequests),
+			builder.WithPredicates(predicate.Funcs{UpdateFunc: nodeAllocatableChanged})).
+		Complete(r)
+}
+
+// podEventHandler enqueues the node a pod is (or was) bound to, delayed by the
+// debounce period so a burst of pods landing on one node collapses to a single
+// recompute (§6.2 step 3).
+func (r *NodeReconciler) podEventHandler() handler.EventHandler {
+	enqueue := func(q workqueue.TypedRateLimitingInterface[reconcile.Request], nodeName string) {
+		if nodeName == "" {
+			return
+		}
+		q.AddAfter(reconcile.Request{NamespacedName: types.NamespacedName{Name: nodeName}}, r.debouncePeriod())
+	}
+	return handler.Funcs{
+		CreateFunc: func(_ context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(q, e.Object.(*corev1.Pod).Spec.NodeName)
+		},
+		UpdateFunc: func(_ context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(q, e.ObjectNew.(*corev1.Pod).Spec.NodeName)
+			if old := e.ObjectOld.(*corev1.Pod).Spec.NodeName; old != "" && old != e.ObjectNew.(*corev1.Pod).Spec.NodeName {
+				enqueue(q, old) // rare rebind: recompute the node it left, too
+			}
+		},
+		DeleteFunc: func(_ context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(q, e.Object.(*corev1.Pod).Spec.NodeName)
+		},
+	}
+}
+
+// podUpdateRelevant filters pod updates down to the ones that can change a
+// node's slack or a managed limit (§6.2 step 1): binding, terminal transition,
+// or a CPU-request change (e.g. VPA resizing an unmanaged pod).
+func podUpdateRelevant(e event.UpdateEvent) bool {
+	oldPod, ok1 := e.ObjectOld.(*corev1.Pod)
+	newPod, ok2 := e.ObjectNew.(*corev1.Pod)
+	if !ok1 || !ok2 {
+		return false
+	}
+	if oldPod.Spec.NodeName != newPod.Spec.NodeName {
+		return true
+	}
+	if podTerminal(oldPod) != podTerminal(newPod) {
+		return true
+	}
+	return podCPURequestMilli(resizableContainers(oldPod)) != podCPURequestMilli(resizableContainers(newPod))
+}
+
+func nodeToRequests(_ context.Context, o client.Object) []reconcile.Request {
+	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: o.GetName()}}}
+}
+
+// nodeAllocatableChanged passes only node updates that move allocatable CPU;
+// heartbeat/status churn (which fires constantly) is dropped (§6.2 step 2).
+func nodeAllocatableChanged(e event.UpdateEvent) bool {
+	oldNode, ok1 := e.ObjectOld.(*corev1.Node)
+	newNode, ok2 := e.ObjectNew.(*corev1.Node)
+	if !ok1 || !ok2 {
+		return false
+	}
+	return oldNode.Status.Allocatable.Cpu().MilliValue() != newNode.Status.Allocatable.Cpu().MilliValue()
+}
