@@ -26,6 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
+	"github.com/karlkfi/kube-headroom/internal/eligibility"
 	"github.com/karlkfi/kube-headroom/internal/policy"
 )
 
@@ -116,7 +117,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	// Windows / static-CPU-manager / NUMA-pinned nodes forbid in-place resize
 	// (§6.3): recompute slack for observability but manage none of their pods.
-	nodeManaged := nodeManageable(&node, &cfg.spec)
+	nodeManaged := eligibility.NodeManageable(&node, &cfg.spec)
 	if !nodeManaged {
 		log.V(1).Info("node excluded from management; pods contribute slack only", "node", req.Name)
 	}
@@ -163,7 +164,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			continue
 		}
 
-		currentMilli := podCurrentLimitMilli(resizableContainers(pod))
+		currentMilli := eligibility.PodCurrentLimitMilli(eligibility.ResizableContainers(pod))
 		if cfg.dryRun {
 			// Dry-run meters and annotates what would change but issues no patch
 			// (§9.3): the default, safe adoption path.
@@ -210,13 +211,13 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 
 	for i := range pods {
 		pod := &pods[i]
-		if podTerminal(pod) {
+		if eligibility.PodTerminal(pod) {
 			continue // terminal pods hold no CPU; they neither book slack nor get managed
 		}
-		rcs := resizableContainers(pod)
+		rcs := eligibility.ResizableContainers(pod)
 
 		managed := false
-		if nodeManaged && eligible(pod, rcs) && !ownerExcluded(pod, cfg.spec.ExcludedOwners) && !r.inBackoff(pod) {
+		if nodeManaged && eligibility.Eligible(pod, rcs) && !eligibility.OwnerExcluded(pod, cfg.spec.ExcludedOwners) && !r.inBackoff(pod) {
 			ok, cached := nsManaged[pod.Namespace]
 			if !cached {
 				var ns corev1.Namespace
@@ -226,7 +227,7 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 					}
 					ok = false
 				} else {
-					ok = namespaceManaged(&ns, &cfg.spec)
+					ok = eligibility.NamespaceManaged(&ns, &cfg.spec)
 				}
 				nsManaged[pod.Namespace] = ok
 			}
@@ -258,7 +259,7 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 // resize subresource with server-side apply (§9.4.1). The pod target is split
 // pro-rata across containers so their limits sum to the target.
 func (r *NodeReconciler) applyResize(ctx context.Context, pod *corev1.Pod, targetMilli int64) error {
-	rcs := resizableContainers(pod)
+	rcs := eligibility.ResizableContainers(pod)
 	perContainer := splitLimit(targetMilli, rcs)
 	if len(perContainer) == 0 {
 		return nil
@@ -525,10 +526,10 @@ func podUpdateRelevant(e event.UpdateEvent) bool {
 	if oldPod.Spec.NodeName != newPod.Spec.NodeName {
 		return true
 	}
-	if podTerminal(oldPod) != podTerminal(newPod) {
+	if eligibility.PodTerminal(oldPod) != eligibility.PodTerminal(newPod) {
 		return true
 	}
-	return podCPURequestMilli(resizableContainers(oldPod)) != podCPURequestMilli(resizableContainers(newPod))
+	return eligibility.PodCPURequestMilli(eligibility.ResizableContainers(oldPod)) != eligibility.PodCPURequestMilli(eligibility.ResizableContainers(newPod))
 }
 
 func nodeToRequests(_ context.Context, o client.Object) []reconcile.Request {
