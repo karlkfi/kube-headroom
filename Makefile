@@ -78,8 +78,8 @@ backlog-lint: ## Lint the docs/STATUS.md backlog.
 	bash scripts/lint-backlog.sh docs/STATUS.md
 
 .PHONY: govulncheck
-govulncheck: ## Report known vulnerabilities in dependencies.
-	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+govulncheck: govulncheck-tool ## Report known vulnerabilities in dependencies.
+	"$(GOVULNCHECK)" ./...
 
 .PHONY: shellcheck
 shellcheck: ## Lint shell scripts and git hooks (skips locally if shellcheck is absent; CI runs it strictly).
@@ -213,6 +213,9 @@ LOCALBIN ?= $(shell pwd)/bin
 $(LOCALBIN):
 	mkdir -p "$(LOCALBIN)"
 
+## Location of the tools submodule (tools/go.mod) that pins build-tool versions.
+TOOLS_DIR ?= tools
+
 ## Tool Binaries
 KUBECTL ?= kubectl
 KIND ?= kind
@@ -220,10 +223,15 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+GOVULNCHECK ?= $(LOCALBIN)/govulncheck
 
 ## Tool Versions
-KUSTOMIZE_VERSION ?= v5.8.1
-CONTROLLER_TOOLS_VERSION ?= v0.21.0
+## controller-gen, kustomize, golangci-lint and govulncheck are pinned in the
+## tools submodule (tools/go.mod); these read the pinned version from there so
+## there is a single source of truth. Override on the command line if needed.
+KUSTOMIZE_VERSION ?= $(call toolver,sigs.k8s.io/kustomize/kustomize/v5)
+CONTROLLER_TOOLS_VERSION ?= $(call toolver,sigs.k8s.io/controller-tools)
+GOVULNCHECK_VERSION ?= $(call toolver,golang.org/x/vuln)
 
 #ENVTEST_VERSION is the controller-runtime version to use for setup-envtest, derived from go.mod
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
@@ -235,16 +243,16 @@ ENVTEST_K8S_VERSION ?= $(shell v='$(call gomodver,k8s.io/api)'; \
   [ -n "$$v" ] || { echo "Set ENVTEST_K8S_VERSION manually (k8s.io/api replace has no tag)" >&2; exit 1; }; \
   printf '%s\n' "$$v" | sed -E 's/^v?[0-9]+\.([0-9]+).*/1.\1/')
 
-GOLANGCI_LINT_VERSION ?= v2.12.2
+GOLANGCI_LINT_VERSION ?= $(call toolver,github.com/golangci/golangci-lint/v2)
 .PHONY: kustomize
-kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
+kustomize: $(KUSTOMIZE) ## Build kustomize from the tools submodule if necessary.
 $(KUSTOMIZE): $(LOCALBIN)
-	$(call go-install-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v5,$(KUSTOMIZE_VERSION))
+	$(call go-build-tool,$(KUSTOMIZE),sigs.k8s.io/kustomize/kustomize/v5,$(KUSTOMIZE_VERSION))
 
 .PHONY: controller-gen
-controller-gen: $(CONTROLLER_GEN) ## Download controller-gen locally if necessary.
+controller-gen: $(CONTROLLER_GEN) ## Build controller-gen from the tools submodule if necessary.
 $(CONTROLLER_GEN): $(LOCALBIN)
-	$(call go-install-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
+	$(call go-build-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen,$(CONTROLLER_TOOLS_VERSION))
 
 .PHONY: setup-envtest
 setup-envtest: envtest ## Download the binaries required for ENVTEST in the local bin directory.
@@ -260,14 +268,19 @@ $(ENVTEST): $(LOCALBIN)
 	$(call go-install-tool,$(ENVTEST),sigs.k8s.io/controller-runtime/tools/setup-envtest,$(ENVTEST_VERSION))
 
 .PHONY: golangci-lint
-golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+golangci-lint: $(GOLANGCI_LINT) ## Build golangci-lint from the tools submodule if necessary.
 $(GOLANGCI_LINT): $(LOCALBIN)
-	$(call go-install-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
+	$(call go-build-tool,$(GOLANGCI_LINT),github.com/golangci/golangci-lint/v2/cmd/golangci-lint,$(GOLANGCI_LINT_VERSION))
 	@test -f .custom-gcl.yml && { \
 		echo "Building custom golangci-lint with plugins..." && \
 		$(GOLANGCI_LINT) custom --destination $(LOCALBIN) --name golangci-lint-custom && \
 		mv -f $(LOCALBIN)/golangci-lint-custom $(GOLANGCI_LINT); \
 	} || true
+
+.PHONY: govulncheck-tool
+govulncheck-tool: $(GOVULNCHECK) ## Build govulncheck from the tools submodule if necessary.
+$(GOVULNCHECK): $(LOCALBIN)
+	$(call go-build-tool,$(GOVULNCHECK),golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
@@ -287,4 +300,28 @@ endef
 
 define gomodver
 $(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
+endef
+
+# toolver reads a tool's pinned version from the tools submodule (tools/go.mod),
+# so the Makefile and tools/go.mod never drift.
+# $1 - module path of the tool (e.g. sigs.k8s.io/controller-tools)
+define toolver
+$(shell go -C $(TOOLS_DIR) list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
+endef
+
+# go-build-tool builds a tool from the tools submodule (tools/go.mod pins the
+# version) into LOCALBIN, version-stamped so a version bump in tools/go.mod
+# rebuilds it. Mirrors go-install-tool but sources the pinned version from the
+# submodule instead of a floating '@version'.
+# $1 - target path with name of binary
+# $2 - package import path, built from within the tools module
+# $3 - resolved version, used to version-stamp the binary
+define go-build-tool
+@[ -f "$(1)-$(3)" ] && [ "$$(readlink -- "$(1)" 2>/dev/null)" = "$(1)-$(3)" ] || { \
+set -e; \
+echo "Building $(2)@$(3)" ;\
+rm -f "$(1)" ;\
+go -C "$(TOOLS_DIR)" build -o "$(1)-$(3)" "$(2)" ;\
+} ;\
+ln -sf "$$(realpath "$(1)-$(3)")" "$(1)"
 endef
