@@ -1,0 +1,18 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: controller-manager
+  namespace: system
+  labels:
+    control-plane: controller-manager
+    app.kubernetes.io/name: kube-headroom
+    app.kubernetes.io/managed-by: kustomize
+spec:
+  # Keep at least one webhook-serving replica up during voluntary disruptions
+  # (node drains, rolling updates). Only meaningful with replicas >= 2; see
+  # manager.yaml.
+  minAvailable: 1
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+      app.kubernetes.io/name: kube-headroom
