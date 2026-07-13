@@ -33,8 +33,12 @@ func SetupPodWebhookWithManager(mgr ctrl.Manager) error {
 // on the MutatingWebhookConfiguration (config/webhook/manifests_patch.yaml); the
 // failurePolicy is Ignore so a missed mutation degrades to plain v1 eligibility and
 // never blocks pod creation (§6.5). The verb is create only — post-birth CPU limits
-// belong to the node reconciler.
-// +kubebuilder:webhook:path=/mutate-core-v1-pod,mutating=true,failurePolicy=ignore,sideEffects=None,groups=core,resources=pods,verbs=create,versions=v1,name=mpod-v1.kb.io,admissionReviewVersions=v1
+// belong to the node reconciler. timeoutSeconds is 5 (below the 10s default) so a
+// stalled webhook bounds the latency it can add to a pod CREATE before the
+// apiserver gives up and, under Ignore, admits the pod unmutated: a mutating
+// webhook sits in the synchronous API path, so it must fail open fast. The handler
+// itself only does cached reads, so steady-state latency is sub-millisecond.
+// +kubebuilder:webhook:path=/mutate-core-v1-pod,mutating=true,failurePolicy=ignore,sideEffects=None,groups=core,resources=pods,verbs=create,versions=v1,name=mpod-v1.kb.io,admissionReviewVersions=v1,timeoutSeconds=5
 
 // PodCustomDefaulter seeds an absent CPU limit at pod-create time so short-lived
 // pods and boot-time-quota runtimes — which the node reconciler may never reach in
