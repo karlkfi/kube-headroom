@@ -10,6 +10,17 @@ updates:
         patterns: ["*"]
     open-pull-requests-limit: 5
 
+  # Build tools pinned in the tools/ submodule (controller-gen, kustomize,
+  # golangci-lint, govulncheck) — one grouped PR per run, same as above.
+  - package-ecosystem: gomod
+    directory: "/tools"
+    schedule:
+      interval: weekly
+    groups:
+      tools:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+
   # GitHub Actions used by the workflows (pinned by SHA; keeps them current).
   - package-ecosystem: github-actions
     directory: "/"
