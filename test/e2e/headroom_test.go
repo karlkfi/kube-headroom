@@ -148,14 +148,14 @@ func headroomSpecs() {
 		// making the observed limit unambiguously the webhook's birth value rather
 		// than a post-bind correction, with no race to lose.
 		//
-		// PENDING: this case is the first to exercise the webhook through the real
-		// apiserver admission path, and it surfaced a wiring bug — the deployed
-		// MutatingWebhookConfiguration routes CREATE to /mutate-core-v1-pod while
+		// This case is the first to exercise the webhook through the real apiserver
+		// admission path, and it surfaced a wiring bug: the deployed
+		// MutatingWebhookConfiguration routed CREATE to /mutate-core-v1-pod while
 		// controller-runtime serves the core Pod webhook at /mutate--v1-pod, so the
-		// apiserver 404s and (failurePolicy: Ignore) admits the pod unseeded. It is
-		// marked PIt until the path-alignment fix lands; flip PIt→It in that same
-		// change to activate it (verified green locally with the fix applied).
-		PIt("seeds a Job pod's birth CPU limit at admission via the webhook", func() {
+		// apiserver 404'd and (failurePolicy: Ignore) admitted the pod unseeded. The
+		// path-alignment fix (webhook marker → /mutate--v1-pod) landed alongside this
+		// spec, which activated it.
+		It("seeds a Job pod's birth CPU limit at admission via the webhook", func() {
 			By("creating a short-lived Job whose pod is admitted but cannot schedule")
 			applyBirthJob(birthJob, managedNamespace, probeRequestMilli)
 
