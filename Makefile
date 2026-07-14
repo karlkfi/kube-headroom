@@ -191,9 +191,10 @@ helm-template: helm ## Render both charts and validate them with kubeconform.
 	"$(HELM)" template $(OPERATOR_RELEASE) $(OPERATOR_CHART) -n $(HELM_NAMESPACE) | kubeconform -strict -ignore-missing-schemas -summary
 
 .PHONY: helm-package
-helm-package: helm ## Package both charts into dist/.
+helm-package: helm ## Package both charts into dist/. Set CHART_VERSION=x.y.z to stamp the release version/appVersion.
 	mkdir -p dist
-	"$(HELM)" package $(CRDS_CHART) $(OPERATOR_CHART) -d dist
+	"$(HELM)" package $(CRDS_CHART) $(OPERATOR_CHART) -d dist \
+		$(if $(CHART_VERSION),--version $(CHART_VERSION) --app-version $(CHART_VERSION),)
 
 .PHONY: helm-push
 helm-push: helm-package ## Push both packaged charts to the OCI registry (needs `helm registry login`).
