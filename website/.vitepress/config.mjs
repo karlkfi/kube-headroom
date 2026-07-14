@@ -36,8 +36,10 @@ export default defineConfig({
   ],
   themeConfig: {
     siteTitle: "KUBE-HEADROOM / DOCS",
-    // the navbar title returns to the landing page (used raw, not
-    // base-prefixed — same absolute path locally and on Pages)
+    // the A3 mark in the navbar + the title both return to the landing page
+    // (logoLink is used raw, not base-prefixed — same absolute path locally
+    // and on Pages). The logo file lives in docs/public/.
+    logo: "/logo.svg",
     logoLink: "/kube-headroom/",
     nav: [
       { text: "Design", link: "/design" },
