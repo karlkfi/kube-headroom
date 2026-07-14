@@ -9,3 +9,11 @@
 # Re-include Go module files
 !go.mod
 !go.sum
+
+# Re-include the vendored dependency tree wholesale. The build runs in
+# -mod=vendor mode, which needs more than the *.go files re-included above:
+# vendor/modules.txt (consistency manifest) plus non-Go build inputs such as
+# assembly (*.s) and cgo sources. Dropping any of these breaks the build with
+# "inconsistent vendoring". Listed last so it wins over the *_test.go exclusion.
+!vendor
+!vendor/**

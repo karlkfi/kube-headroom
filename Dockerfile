@@ -4,12 +4,13 @@ ARG TARGETOS
 ARG TARGETARCH
 
 WORKDIR /workspace
-# Copy the Go Modules manifests
+# Copy the module manifests and the vendored dependency tree first, so this
+# large, rarely-changing layer stays cached across app-source-only edits. Deps
+# are vendored, so there is no `go mod download` step and the build needs no
+# network.
 COPY go.mod go.mod
 COPY go.sum go.sum
-# cache deps before building and copying source so that we don't need to re-download as much
-# and so that source changes don't invalidate our downloaded layer
-RUN go mod download
+COPY vendor/ vendor/
 
 # Copy the Go source (relies on .dockerignore to filter)
 COPY . .
@@ -19,7 +20,9 @@ COPY . .
 # was called. For example, if we call make docker-build in a local env which has the Apple Silicon M1 SO
 # the docker BUILDPLATFORM arg will be linux/arm64 when for Apple x86 it will be linux/amd64. Therefore,
 # by leaving it empty we can ensure that the container and binary shipped on it will have the same platform.
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager cmd/main.go
+# -mod=vendor builds strictly from vendor/ and turns an inconsistent vendor tree
+# into a hard error instead of a silent network fetch.
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -mod=vendor -a -o manager cmd/main.go
 
 # Use distroless as minimal base image to package the manager binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
