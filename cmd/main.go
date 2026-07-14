@@ -175,17 +175,13 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "605152a6.dev",
-		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-		// when the Manager ends. This requires the binary to immediately end when the
-		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-		// speeds up voluntary leader transitions as the new leader don't have to wait
-		// LeaseDuration time first.
-		//
-		// In the default scaffold provided, the program ends immediately after
-		// the manager stops, so would be fine to enable this option. However,
-		// if you are doing or is intended to do any operation such as perform cleanups
-		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
+		// LeaderElectionReleaseOnCancel makes the outgoing leader release its lease
+		// on graceful shutdown so the standby starts reconciling near-instantly,
+		// instead of waiting the full LeaseDuration (~15s) on every rollout. This is
+		// safe only if the binary exits immediately once the manager stops: Headroom
+		// does no post-stop cleanup — mgr.Start is the last call in main() with no
+		// deferred teardown — so the precondition holds (Q38).
+		LeaderElectionReleaseOnCancel: true,
 	})
 	if err != nil {
 		setupLog.Error(err, "Failed to start manager")
