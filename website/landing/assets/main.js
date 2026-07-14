@@ -32,6 +32,12 @@
     }
   })();
 
+  // footer footnote: which signal path did the glow detector pick?
+  var fxNote = document.getElementById("fx-note");
+  if (fxNote && document.documentElement.classList.contains("fx")) {
+    fxNote.textContent = "· SIGNAL HD · GPU GLOW ON";
+  }
+
   // ---- copy button ----
   var copyBtn = document.getElementById("copy-btn");
   var cmd = document.getElementById("install-cmd");

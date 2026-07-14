@@ -538,7 +538,10 @@ footer {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
+.fx-note { cursor: help; }
+html.fx .fx-note { color: var(--cyan); }
 
 .sr-only {
   position: absolute;
