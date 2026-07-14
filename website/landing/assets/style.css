@@ -238,9 +238,9 @@ code {
   border: 0;
   padding: 0;
   font-size: inherit;
-  /* wrap rather than truncate — COPY always yields the exact command */
+  /* explicit backslash-newline continuation in the markup; COPY yields the
+     same two-line command, which pastes and runs as-is */
   white-space: pre-wrap;
-  word-break: break-all;
   min-width: 0;
 }
 .install .copy {

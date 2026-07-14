@@ -153,7 +153,8 @@
             <span class="step-lbl">1 · CRDS <em>cluster-wide · kept on uninstall</em></span>
             <div class="install-row">
               <span class="ps1">$</span>
-              <code class="cmd">helm install headroom-crds oci://ghcr.io/karlkfi/charts/kube-headroom-crds</code>
+              <code class="cmd">helm install headroom-crds \
+  oci://ghcr.io/karlkfi/charts/kube-headroom-crds</code>
               <button class="copy" aria-label="Copy CRD install command">COPY</button>
             </div>
           </div>
@@ -161,7 +162,8 @@
             <span class="step-lbl">2 · OPERATOR <em>namespaced · dry-run by default</em></span>
             <div class="install-row">
               <span class="ps1">$</span>
-              <code class="cmd">helm install headroom oci://ghcr.io/karlkfi/charts/kube-headroom</code>
+              <code class="cmd">helm install headroom \
+  oci://ghcr.io/karlkfi/charts/kube-headroom</code>
               <button class="copy" aria-label="Copy operator install command">COPY</button>
             </div>
           </div>
