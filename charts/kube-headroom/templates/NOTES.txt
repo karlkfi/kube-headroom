@@ -4,13 +4,10 @@ Image: {{ include "kube-headroom.image" . }}
 Replicas: {{ .Values.replicas }}
 Webhook: {{ if .Values.webhook.enable }}enabled{{ else }}disabled{{ end }} | cert-manager: {{ if .Values.certmanager.enable }}enabled{{ else }}disabled{{ end }} | Prometheus: {{ if .Values.prometheus.enable }}enabled{{ else }}disabled{{ end }} | NetworkPolicy: {{ if .Values.networkPolicy.enable }}enabled{{ else }}disabled{{ end }}
 
-{{- if not .Values.crds.install }}
-
-NOTE: this chart did not install the CRD (crds.install=false). Ensure the
-kube-headroom-crds chart is installed first:
+NOTE: this chart does not install the HeadroomConfig CRD — it ships as its own
+chart, on a cluster-wide lifecycle. Ensure it is installed first:
 
   helm upgrade --install kube-headroom-crds oci://ghcr.io/karlkfi/charts/kube-headroom-crds
-{{- end }}
 
 Manage a namespace with Headroom by labelling it:
 

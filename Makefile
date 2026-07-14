@@ -258,11 +258,12 @@ build-installer: manifests generate helm-sync helm ## Render a consolidated YAML
 	mkdir -p dist
 	@repo="$$(printf '%s' '$(IMG)' | sed -E 's/(.*):[^:/]+$$/\1/')"; \
 	 tag="$$(printf '%s' '$(IMG)' | sed -E 's/.*:([^:/]+)$$/\1/')"; \
-	 "$(HELM)" template $(OPERATOR_RELEASE) $(OPERATOR_CHART) \
+	 { "$(HELM)" template $(CRDS_RELEASE) $(CRDS_CHART) \
+		--namespace $(HELM_NAMESPACE); \
+	   "$(HELM)" template $(OPERATOR_RELEASE) $(OPERATOR_CHART) \
 		--namespace $(HELM_NAMESPACE) \
-		--set crds.install=true \
 		--set-string image.repository="$$repo" \
-		--set-string image.tag="$$tag" > dist/install.yaml
+		--set-string image.tag="$$tag"; } > dist/install.yaml
 
 ##@ Deployment
 
