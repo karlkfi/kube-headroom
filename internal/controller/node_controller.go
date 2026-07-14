@@ -80,6 +80,13 @@ type NodeReconciler struct {
 	limiters map[string]*rate.Limiter // node name -> per-node patch token bucket
 	backoff  sync.Map                 // pod key (ns/name) -> time.Time expiry
 
+	// podSeries tracks, per node, the managed pods currently exporting a
+	// podLimitCores series, so a pod that leaves a node or becomes ineligible has
+	// its series deleted (the pod-labelled analogue of forgetNode's node-series
+	// cleanup). Its per-node sizes also feed the cluster-wide podsManaged gauge.
+	// Guarded by mu. node name -> pod key (ns/name) -> label values.
+	podSeries map[string]map[string]podSeriesRef
+
 	// now is overridable in tests; defaults to time.Now.
 	now func() time.Time
 }
@@ -92,6 +99,13 @@ type resolvedConfig struct {
 	dryRun         bool
 	perNodePPS     float64
 	debouncePeriod time.Duration
+}
+
+// podSeriesRef holds the label values of a podLimitCores series so it can be
+// deleted without re-fetching the pod (which may be gone by cleanup time).
+type podSeriesRef struct {
+	namespace string
+	name      string
 }
 
 // The RBAC this reconciler needs (pods, pods/resize, nodes, namespaces) is
@@ -153,6 +167,22 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	nodeFactor.WithLabelValues(req.Name).Set(stats.Factor)
 	nodeSlackCores.WithLabelValues(req.Name).Set(float64(stats.SlackMilli) / 1000.0)
 	nodeManagedPods.WithLabelValues(req.Name).Set(float64(stats.ManagedPods))
+
+	// Per-pod target-limit gauges — the §8.1 money-graph series. Set for every
+	// managed pod's computed target (the ceiling Headroom would/does enforce),
+	// independent of whether this pass applies it: the value is meaningful in
+	// dry-run and even when a later rate-limit break skips the actual patch.
+	// syncPodMetrics then deletes series for pods no longer managed on this node.
+	current := make(map[string]podSeriesRef, len(decisions))
+	for _, d := range decisions {
+		pod := byKey[d.Key]
+		if pod == nil {
+			continue
+		}
+		podLimitCores.WithLabelValues(pod.Namespace, pod.Name).Set(float64(d.TargetLimitMilli) / 1000.0)
+		current[d.Key] = podSeriesRef{namespace: pod.Namespace, name: pod.Name}
+	}
+	r.syncPodMetrics(req.Name, current)
 
 	nodePods := len(inputs)
 	limiter := r.limiterFor(req.Name, cfg.perNodePPS)
@@ -407,11 +437,53 @@ func (r *NodeReconciler) limiterFor(node string, pps float64) *rate.Limiter {
 func (r *NodeReconciler) forgetNode(node string) {
 	r.mu.Lock()
 	delete(r.limiters, node)
+	// Drop every per-pod series this node was exporting, then refresh the
+	// cluster-wide count from what remains — otherwise a deleted node leaks a
+	// series per pod it hosted.
+	for _, s := range r.podSeries[node] {
+		podLimitCores.DeleteLabelValues(s.namespace, s.name)
+	}
+	delete(r.podSeries, node)
+	r.refreshPodsManagedLocked()
 	r.mu.Unlock()
 	// Drop the node's gauge series so a deleted node doesn't linger in /metrics.
 	nodeFactor.DeleteLabelValues(node)
 	nodeSlackCores.DeleteLabelValues(node)
 	nodeManagedPods.DeleteLabelValues(node)
+}
+
+// syncPodMetrics records the pods currently exporting a podLimitCores series for
+// one node and deletes the series for any pod managed on this node last
+// reconcile but no longer in `current` (rebound, deleted, or newly ineligible) —
+// the pod-labelled analogue of forgetNode. It then refreshes the cluster-wide
+// podsManaged gauge from the live series counts.
+func (r *NodeReconciler) syncPodMetrics(node string, current map[string]podSeriesRef) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.podSeries == nil {
+		r.podSeries = map[string]map[string]podSeriesRef{}
+	}
+	for key, s := range r.podSeries[node] {
+		if _, ok := current[key]; !ok {
+			podLimitCores.DeleteLabelValues(s.namespace, s.name)
+		}
+	}
+	if len(current) == 0 {
+		delete(r.podSeries, node)
+	} else {
+		r.podSeries[node] = current
+	}
+	r.refreshPodsManagedLocked()
+}
+
+// refreshPodsManagedLocked sets podsManaged to the total number of managed pods
+// across all nodes (the sum of node_managed_pods). Caller must hold mu.
+func (r *NodeReconciler) refreshPodsManagedLocked() {
+	total := 0
+	for _, s := range r.podSeries {
+		total += len(s)
+	}
+	podsManaged.Set(float64(total))
 }
 
 // --- backoff state ----------------------------------------------------------

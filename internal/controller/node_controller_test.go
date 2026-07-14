@@ -6,13 +6,16 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	dto "github.com/prometheus/client_model/go"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
@@ -122,6 +125,34 @@ func podLimitMilli(ns, name string) int64 {
 	var pod corev1.Pod
 	Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, &pod)).To(Succeed())
 	return pod.Spec.Containers[0].Resources.Limits.Cpu().MilliValue()
+}
+
+// podLimitSeries reports the value of the headroom_pod_limit_cores series for a
+// pod in the managed namespace (nsA) and whether it currently exists. It
+// collects the gauge directly (rather than via ToFloat64) so a deleted series
+// reads as absent instead of being silently resurrected at 0 — the distinction
+// the lifecycle-cleanup specs turn on.
+func podLimitSeries(name string) (float64, bool) {
+	ch := make(chan prometheus.Metric, 128)
+	podLimitCores.Collect(ch)
+	close(ch)
+	for m := range ch {
+		var dtoM dto.Metric
+		Expect(m.Write(&dtoM)).To(Succeed())
+		var gotNS, gotName string
+		for _, l := range dtoM.Label {
+			switch l.GetName() {
+			case podNamespaceLabel:
+				gotNS = l.GetValue()
+			case podNameLabel:
+				gotName = l.GetValue()
+			}
+		}
+		if gotNS == nsA && gotName == name {
+			return dtoM.Gauge.GetValue(), true
+		}
+	}
+	return 0, false
 }
 
 // applyConfig upserts the singleton HeadroomConfig with the given dryRun value.
@@ -458,6 +489,96 @@ var _ = Describe("NodeReconciler", func() {
 		Expect(testutil.ToFloat64(nodeFactor.WithLabelValues(node))).To(BeNumerically(">", 1.0))
 		Expect(testutil.ToFloat64(nodeManagedPods.WithLabelValues(node))).To(BeNumerically("==", 1))
 		Expect(testutil.ToFloat64(resizesTotal.WithLabelValues(resultApplied))).To(BeNumerically(">", before))
+	})
+
+	It("exports a pod_limit_cores series and the cluster pods_managed gauge (§8.1)", func() {
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(nsA, "moneypod", node, 1000, 0)
+
+		reconcileNode(node)
+		Eventually(func() int64 { return podLimitMilli(nsA, "moneypod") }).Should(Equal(int64(8000)))
+
+		// The per-pod ceiling gauge tracks the applied target (8 cores).
+		val, ok := podLimitSeries("moneypod")
+		Expect(ok).To(BeTrue())
+		Expect(val).To(BeNumerically("~", 8.0, 0.001))
+		// One managed pod on this reconciler → cluster gauge reads 1.
+		Expect(testutil.ToFloat64(podsManaged)).To(BeNumerically("==", 1))
+	})
+
+	It("sets pod_limit_cores in dry-run too (target is known without a patch)", func() {
+		applyConfig(true)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(nsA, "drylimit", node, 1000, 0)
+
+		reconcileNode(node)
+		// No patch is issued, but the computed target ceiling is still exported.
+		Eventually(func() bool { _, ok := podLimitSeries("drylimit"); return ok }).Should(BeTrue())
+		val, _ := podLimitSeries("drylimit")
+		Expect(val).To(BeNumerically("~", 8.0, 0.001))
+	})
+
+	It("deletes the pod_limit_cores series when a pod leaves the node (§8.1 cleanup)", func() {
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(nsA, "ephemeral", node, 1000, 0)
+		makeBurstablePod(nsA, "stayer", node, 1000, 0)
+
+		reconcileNode(node)
+		Eventually(func() bool { _, ok := podLimitSeries("ephemeral"); return ok }).Should(BeTrue())
+		Expect(testutil.ToFloat64(podsManaged)).To(BeNumerically("==", 2))
+
+		// Remove one pod and reconcile: its series must be reclaimed, the other kept,
+		// and the cluster gauge must drop to match — otherwise the pod-labelled
+		// series leaks forever.
+		// Force-delete (grace 0): envtest has no kubelet to finalize a graceful
+		// delete, so a normal Delete would leave the pod Terminating and still in
+		// the node's list.
+		var pod corev1.Pod
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: nsA, Name: "ephemeral"}, &pod)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, &pod, client.GracePeriodSeconds(0))).To(Succeed())
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Namespace: nsA, Name: "ephemeral"}, &corev1.Pod{})
+		}).Should(HaveOccurred())
+
+		reconcileNode(node)
+		_, ok := podLimitSeries("ephemeral")
+		Expect(ok).To(BeFalse())
+		_, ok = podLimitSeries("stayer")
+		Expect(ok).To(BeTrue())
+		Expect(testutil.ToFloat64(podsManaged)).To(BeNumerically("==", 1))
+	})
+
+	It("drops all pod series and zeroes pods_managed when the node is deleted", func() {
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(nsA, "onprem", node, 1000, 0)
+
+		reconcileNode(node)
+		Eventually(func() bool { _, ok := podLimitSeries("onprem"); return ok }).Should(BeTrue())
+
+		// Delete the node: the NotFound path in Reconcile calls forgetNode, which
+		// must reclaim the per-pod series it hosted.
+		var n corev1.Node
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Name: node}, &n)).To(Succeed())
+		Expect(k8sClient.Delete(ctx, &n)).To(Succeed())
+		Eventually(func() error {
+			return k8sClient.Get(ctx, types.NamespacedName{Name: node}, &corev1.Node{})
+		}).Should(HaveOccurred())
+
+		reconcileNode(node)
+		_, ok := podLimitSeries("onprem")
+		Expect(ok).To(BeFalse())
+		Expect(testutil.ToFloat64(podsManaged)).To(BeNumerically("==", 0))
 	})
 
 	It("meters dry-run decisions under result=dry-run, not applied (§9.3)", func() {

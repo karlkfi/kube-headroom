@@ -22,6 +22,14 @@ const metricNamespace = "headroom"
 // nodeLabel is the shared label key for the node-scoped gauges.
 const nodeLabel = "node"
 
+// podLimitCores is labelled by namespace + pod so it joins directly against
+// cAdvisor's container_cpu_cfs_throttled_periods_total (which carries
+// {namespace, pod, container}) — the join the §8.1 "money graph" is built on.
+const (
+	podNamespaceLabel = "namespace"
+	podNameLabel      = "pod"
+)
+
 // resize result label values on resizesTotal, one per §6.4 outcome.
 const (
 	resultApplied     = "applied"      // resize patch accepted (event: CPULimitAdjusted)
@@ -74,10 +82,33 @@ var (
 		Help:      "Wall-clock duration of a node reconcile.",
 		Buckets:   prometheus.DefBuckets,
 	})
+
+	// podLimitCores is the CPU-limit ceiling (in cores) Headroom targets for each
+	// managed pod — the §8.1 "money graph" series. Correlated against
+	// container_cpu_cfs_throttled_periods_total in dashboards/headroom.json to
+	// answer "you were throttled because the node was 94% booked; here's who
+	// booked it." The series is per-pod, so it needs lifecycle cleanup on pod
+	// removal/ineligibility (see NodeReconciler.syncPodMetrics / forgetNode) or it
+	// would leak a series per pod forever.
+	podLimitCores = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: metricNamespace,
+		Name:      "pod_limit_cores",
+		Help:      "Headroom's target CPU-limit ceiling in cores for a managed pod.",
+	}, []string{podNamespaceLabel, podNameLabel})
+
+	// podsManaged is the cluster-wide count of Headroom-managed pods, aggregated
+	// across every node (§8.1). node_managed_pods{node} is the per-node breakdown;
+	// this is its sum, maintained centrally so a single scrape answers "how many
+	// pods does Headroom manage right now."
+	podsManaged = prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: metricNamespace,
+		Name:      "pods_managed",
+		Help:      "Total number of Headroom-managed pods across all nodes.",
+	})
 )
 
 func init() {
-	metrics.Registry.MustRegister(nodeFactor, nodeSlackCores, nodeManagedPods, resizesTotal, reconcileDuration)
+	metrics.Registry.MustRegister(nodeFactor, nodeSlackCores, nodeManagedPods, resizesTotal, reconcileDuration, podLimitCores, podsManaged)
 	// Pre-create the counter series so each exports 0 from process start, making
 	// rate()-based alerts well-defined before the first resize ever happens.
 	for _, r := range []string{resultApplied, resultDryRun, resultInfeasible, resultQuotaDenied, resultConflict, resultError} {
