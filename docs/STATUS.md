@@ -6,12 +6,13 @@ the top of the Queue.
 **Status:** 🔲 ready · 🚫 blocked
 **Size:**   S = one session/PR · M = 2–3 sessions · L = needs a plan doc under `docs/plan/`
 **Labels:** `policy` `controller` `webhook` `observability` `tests` `docs` `infra` `security` `spike`
-**Next ID:** Q40
+**Next ID:** Q41
 
 ## Queue
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
+| <a id="Q40"></a>Q40 | Project website on GitHub Pages | `docs` `infra` | 🔲 | M | `website/`: hand-crafted landing (A3 mark, night-drive hero, live slack widget) + VitePress docs + Pages workflow. v2: OG image, custom domain, tenant pages. |
 | <a id="Q39"></a>Q39 | Helm chart ergonomics polish | `infra` | 🔲 | S | Two chart fixes: gate the PDB render on replicas>1 (avoids wedging drains at replicas:1), and support `image.digest` pinning. The audit's crds.keep item is moot — Q33 removed that knob. |
 
 ## Deferred
