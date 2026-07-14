@@ -17,10 +17,12 @@ root="$(git rev-parse --show-toplevel)"
 # ordering this misses.
 # NUL-delimited + a while-read loop so this stays correct under bash 3.2
 # (macOS default, which lacks `mapfile`) and for odd filenames.
+# vendor/ is excluded: it holds checked-in third-party source that must be
+# committed byte-for-byte as `go mod vendor` writes it, not reformatted.
 go_files=()
 while IFS= read -r -d '' f; do
 	go_files+=("$f")
-done < <(git diff --cached --name-only --diff-filter=ACM -z -- '*.go')
+done < <(git diff --cached --name-only --diff-filter=ACM -z -- '*.go' ':(exclude)vendor/**')
 
 if [ "${#go_files[@]}" -gt 0 ]; then
 	unformatted="$(cd "$root" && gofmt -l -- "${go_files[@]}")"
