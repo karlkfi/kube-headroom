@@ -145,21 +145,22 @@
 
       <div class="widget" id="widget">
         <div class="widget-head">
-          <span class="live">■ LIVE</span><span>ONE NODE · DRAG TO BOOK IT</span>
+          <span class="live">■ LIVE</span><span>ONE NODE · SCHEDULE PODS ONTO IT</span>
         </div>
-        <div class="chart" id="chart" role="img" aria-label="Bar chart of three pods: solid bars show CPU requests, shaded extensions show the dynamic limit rising into node slack, a dashed amber line marks allocatable CPU.">
+        <div class="chart" id="chart" role="img" aria-label="Bar chart of the pods on one node: solid bars show CPU requests, shaded extensions show each pod's dynamic limit rising into node slack, a dashed amber line marks allocatable CPU. Scheduling more pods shrinks every limit toward its request.">
           <div class="ceiling"><em>ALLOCATABLE 4 CPU</em></div>
         </div>
         <div class="widget-controls">
-          <label for="booking">NEIGHBORS BOOK THE NODE ⟶</label>
-          <input type="range" id="booking" min="0" max="2.25" step="0.05" value="0.25" aria-label="CPU booked by unmanaged neighbor pods, in cores">
+          <button class="pod-btn" id="pod-add" aria-label="Schedule one randomly sized pod onto the node">+1 POD</button>
+          <button class="pod-btn" id="pod-del" aria-label="Evict the most recently scheduled pod">−1 POD</button>
+          <span class="ctrl-hint" id="ctrl-hint">every scheduling event recomputes every limit</span>
         </div>
         <div class="readouts">
           <span>SLACK <b id="ro-slack">—</b></span>
           <span>MULTIPLIER <b id="ro-mult">—</b></span>
-          <span>AT FULL BOOKING <span class="amberv">LIMIT → REQUEST</span></span>
+          <span>FULL NODE <span class="amberv">LIMIT → REQUEST</span></span>
         </div>
-        <p class="widget-note">The real controller adds a burst floor, per-pod caps, deadband + hysteresis, and per-node rate limits — see the <a href="docs/design.html">design doc</a>. Limits change only when booking changes: no usage feedback, no oscillation.</p>
+        <p class="widget-note">The real controller adds a burst floor, per-pod caps, deadband + hysteresis, and per-node rate limits — see the <a href="docs/design.html">design doc</a>. Limits change only on scheduling events: no usage feedback, no oscillation.</p>
       </div>
     </div>
   </div>

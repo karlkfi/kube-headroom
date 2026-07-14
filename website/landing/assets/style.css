@@ -321,19 +321,40 @@ code {
 }
 .bar .tag b { color: var(--body); font-weight: 400; }
 
-.widget-controls { margin-top: 20px; }
-.widget-controls label {
-  display: block;
+.widget-controls {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pod-btn {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 1.5px;
-  color: var(--muted);
-  margin-bottom: 8px;
+  color: var(--cyan);
+  background: none;
+  border: 1px solid rgba(34, 230, 255, .45);
+  border-radius: 6px;
+  padding: 7px 16px;
+  cursor: pointer;
 }
-input[type="range"] {
-  width: 100%;
-  accent-color: var(--cyan);
+.pod-btn:hover:not(:disabled) {
+  background: rgba(34, 230, 255, .1);
+  border-color: var(--cyan);
 }
+.pod-btn:disabled {
+  color: var(--faint);
+  border-color: var(--line);
+  cursor: not-allowed;
+}
+.ctrl-hint {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 1px;
+  color: var(--faint);
+}
+.ctrl-hint.full { color: var(--amber); }
 .readouts {
   display: flex;
   gap: 20px;
