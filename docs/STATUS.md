@@ -12,7 +12,6 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q36"></a>Q36 | Add values.schema.json to both Helm charts | `infra` | 🔲 | S | Neither chart validates values, so a mistyped toggle (e.g. `webhook.enabled` vs `webhook.enable`) silently no-ops. Add a schema covering the toggles, image.*, replicas, resources, selectors. |
 | <a id="Q39"></a>Q39 | Helm chart ergonomics polish | `infra` | 🔲 | S | Small chart fixes: document the `crds.keep` knob in the operator values.yaml, gate the PDB render on replicas>1 (avoids wedging drains at replicas:1), and support `image.digest` pinning. |
 
 ## Deferred
