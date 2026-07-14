@@ -14,10 +14,8 @@ the top of the Queue.
 |---|---|---|---|---|---|
 | <a id="Q33"></a>Q33 | Helm: CRD-registration race with crds.install + headroomConfig.create | `infra` | 🔲 | S | CRD lives in templates/, so Helm doesn't wait for Established before creating the CR — a both-flags-on install can fail "no matches for kind HeadroomConfig". Order the CR via a post-install hook. |
 | <a id="Q34"></a>Q34 | Test the per-node rate-limiter break path | `tests` | 🔲 | S | Token-bucket break + RequeueAfter (§7 write-pressure bound) is untested. Add an envtest with low perNodePPS and N>1 pods on a node, asserting bounded patches and a non-zero RequeueAfter. |
-| <a id="Q35"></a>Q35 | Jitter the restart reconcile wave | `controller` | 🔲 | S | §8.6/§9.4.4 require jittered timing, but `enqueueDelay` is a fixed debounce (no rand in the code); on restart every node enqueues in one synchronized wave. Add splay to the first per-node enqueue. |
 | <a id="Q36"></a>Q36 | Add values.schema.json to both Helm charts | `infra` | 🔲 | S | Neither chart validates values, so a mistyped toggle (e.g. `webhook.enabled` vs `webhook.enable`) silently no-ops. Add a schema covering the toggles, image.*, replicas, resources, selectors. |
 | <a id="Q37"></a>Q37 | Backoff state lost on restart → duplicate failing writes | `controller` | 🔲 | S | Backoff is in-memory only; after restart/failover a backed-off pod (quota-403/Infeasible) is retried at once, re-emitting the failing patch + warning. Rebuild from pod conditions, or document it. |
-| <a id="Q38"></a>Q38 | Release leader lease on graceful shutdown | `infra` | 🔲 | S | `LeaderElectionReleaseOnCancel` is false, so on rollout the standby waits the full ~15s LeaseDuration before reconciling. Set it true — the manager does no post-stop cleanup, so it's safe. |
 | <a id="Q39"></a>Q39 | Helm chart ergonomics polish | `infra` | 🔲 | S | Small chart fixes: document the `crds.keep` knob in the operator values.yaml, gate the PDB render on replicas>1 (avoids wedging drains at replicas:1), and support `image.digest` pinning. |
 
 ## Deferred
