@@ -1,10 +1,22 @@
 name: Lint
 
+# golangci-lint only inspects Go, so a docs-only diff has nothing to lint. Skip
+# when every changed file is Markdown/docs; mixed code+docs PRs still run.
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions: {}
 

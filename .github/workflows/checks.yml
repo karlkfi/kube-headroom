@@ -6,11 +6,67 @@ on:
       - main
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions: {}
 
 jobs:
+  # Classify the diff so each gate below runs only when something it covers
+  # changed. This workflow mixes Go gates (generate/vendor/vuln) with doc gates
+  # (doc-links/plan-hygiene), so a blanket paths-ignore can't express it — a
+  # docs-only PR must still run doc-links, and a code-only PR must skip it. On
+  # push to main every gate runs regardless (the outputs only gate PRs). There
+  # are no required status checks on this repo, so skipped jobs don't block a PR.
+  changes:
+    name: Classify changed files
+    permissions:
+      contents: read
+      pull-requests: read
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      shell: ${{ steps.filter.outputs.shell }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            go:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'vendor/**'
+              - 'api/**'
+              - 'config/**'
+              - 'hack/**'
+              - 'tools/**'
+              - 'PROJECT'
+              - 'Makefile'
+              - '.github/workflows/checks.yml'
+            shell:
+              - '**/*.sh'
+              - 'scripts/**'
+              - '.githooks/**'
+              - 'Makefile'
+              - '.github/workflows/checks.yml'
+            docs:
+              - '**/*.md'
+              - 'docs/**'
+              - 'scripts/check-doc-links.py'
+              - 'scripts/lint-plan-hygiene.sh'
+              - '.github/workflows/checks.yml'
+
   generate-drift:
     name: Generated files up to date
+    needs: [changes]
+    if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -28,6 +84,8 @@ jobs:
 
   verify-vendor:
     name: Vendored deps up to date
+    needs: [changes]
+    if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -45,6 +103,8 @@ jobs:
 
   govulncheck:
     name: Vulnerability scan
+    needs: [changes]
+    if: needs.changes.outputs.go == 'true' || github.event_name == 'push'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -62,6 +122,8 @@ jobs:
 
   shellcheck:
     name: Shell lint
+    needs: [changes]
+    if: needs.changes.outputs.shell == 'true' || github.event_name == 'push'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -75,6 +137,8 @@ jobs:
 
   doc-links:
     name: Doc links
+    needs: [changes]
+    if: needs.changes.outputs.docs == 'true' || github.event_name == 'push'
     permissions:
       contents: read
     runs-on: ubuntu-latest
@@ -88,6 +152,10 @@ jobs:
 
   plan-hygiene:
     name: Plan hygiene
+    needs: [changes]
+    # Plan hygiene reads both the plan docs and Go code (unreferenced check), so
+    # run it when either the docs or the Go tree changed.
+    if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.go == 'true' || github.event_name == 'push'
     permissions:
       contents: read
     runs-on: ubuntu-latest

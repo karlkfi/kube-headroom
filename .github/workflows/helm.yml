@@ -1,10 +1,23 @@
 name: Helm
 
+# The charts are generated from config/** and Go markers, never from docs, so a
+# docs-only diff can't drift them. Skip when every changed file is Markdown/docs;
+# mixed code+docs PRs still lint, render, and drift-check the charts.
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions: {}
 
