@@ -125,7 +125,7 @@ code {
   position: relative;
   overflow: hidden;
   background: radial-gradient(ellipse at 30% 10%, #0d1220 0%, var(--ground) 65%);
-  padding: 130px 0 210px;
+  padding: 104px 0 200px;
 }
 /* faint scanlines, hero only */
 .hero::after {
@@ -142,7 +142,7 @@ code {
   display: grid;
   grid-template-columns: 1.15fr 1fr;
   gap: 56px;
-  align-items: end;
+  align-items: center;
 }
 .hero-cols > div { min-width: 0; }
 @media (max-width: 880px) {
@@ -171,7 +171,19 @@ code {
   margin-bottom: 12px;
 }
 .wordmark .word {
+  display: inline-block;
+  position: relative;
   text-shadow: -3px 2px 0 rgba(255,45,149,.5), 3px -2px 0 rgba(34,230,255,.5);
+}
+/* interlacing: dark scan rows over the glyphs (near-invisible on the dark
+   ground, visible through the letterforms) */
+.wordmark .word::after {
+  content: "";
+  position: absolute;
+  inset: 2px -6px;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom,
+    rgba(5, 7, 12, .5) 0 2px, transparent 2px 5px);
 }
 /* one glitch moment on first paint, then calm */
 @media (prefers-reduced-motion: no-preference) {
@@ -200,21 +212,37 @@ code {
 }
 
 .install {
-  display: flex;
-  align-items: center;
-  gap: 14px;
   margin-top: 30px;
   background: #05070c;
   border: 1px solid #223;
   border-radius: 8px;
-  padding: 13px 16px;
+  padding: 14px 16px;
   font-family: var(--mono);
-  font-size: 13px;
+  font-size: 12.5px;
   max-width: 620px;
-  overflow-x: auto;
 }
+.install-step + .install-step { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.step-lbl {
+  display: block;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.step-lbl em { font-style: normal; color: var(--faint); letter-spacing: 1px; }
+.install-row { display: flex; align-items: flex-start; gap: 10px; }
 .install .ps1 { color: var(--magenta); user-select: none; }
-.install .cmd { color: var(--text); white-space: nowrap; }
+.install .cmd {
+  color: var(--text);
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+  /* wrap rather than truncate — COPY always yields the exact command */
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-width: 0;
+}
 .install .copy {
   margin-left: auto;
   flex-shrink: 0;

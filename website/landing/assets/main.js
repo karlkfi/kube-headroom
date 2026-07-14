@@ -38,16 +38,22 @@
     fxNote.textContent = "· SIGNAL HD · GPU GLOW ON";
   }
 
-  // ---- copy button ----
-  var copyBtn = document.getElementById("copy-btn");
-  var cmd = document.getElementById("install-cmd");
-  if (copyBtn && cmd && navigator.clipboard) {
-    copyBtn.addEventListener("click", function () {
-      navigator.clipboard.writeText(cmd.textContent).then(function () {
-        copyBtn.textContent = "COPIED";
-        setTimeout(function () { copyBtn.textContent = "COPY"; }, 1600);
-      });
-    });
+  // ---- copy buttons (one per install step) ----
+  if (navigator.clipboard) {
+    Array.prototype.forEach.call(
+      document.querySelectorAll(".install-row"),
+      function (row) {
+        var btn = row.querySelector(".copy");
+        var cmd = row.querySelector(".cmd");
+        if (!btn || !cmd) return;
+        btn.addEventListener("click", function () {
+          navigator.clipboard.writeText(cmd.textContent).then(function () {
+            btn.textContent = "COPIED";
+            setTimeout(function () { btn.textContent = "COPY"; }, 1600);
+          });
+        });
+      }
+    );
   }
 
   // ---- live slack widget ----

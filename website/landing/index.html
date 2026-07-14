@@ -149,9 +149,22 @@
         <p class="tagline">Dynamic CPU limits that float with node slack — no restarts, no metrics pipeline, no oscillation.</p>
         <p class="subline">RECOMPUTED ON SCHEDULING EVENTS · APPLIED VIA IN-PLACE POD RESIZE</p>
         <div class="install">
-          <span class="ps1">$</span>
-          <span class="cmd" id="install-cmd">helm install headroom oci://ghcr.io/karlkfi/charts/kube-headroom</span>
-          <button class="copy" id="copy-btn" aria-label="Copy install command">COPY</button>
+          <div class="install-step">
+            <span class="step-lbl">1 · CRDS <em>cluster-wide · kept on uninstall</em></span>
+            <div class="install-row">
+              <span class="ps1">$</span>
+              <code class="cmd">helm install headroom-crds oci://ghcr.io/karlkfi/charts/kube-headroom-crds</code>
+              <button class="copy" aria-label="Copy CRD install command">COPY</button>
+            </div>
+          </div>
+          <div class="install-step">
+            <span class="step-lbl">2 · OPERATOR <em>namespaced · dry-run by default</em></span>
+            <div class="install-row">
+              <span class="ps1">$</span>
+              <code class="cmd">helm install headroom oci://ghcr.io/karlkfi/charts/kube-headroom</code>
+              <button class="copy" aria-label="Copy operator install command">COPY</button>
+            </div>
+          </div>
         </div>
         <p class="dryrun"><span class="dot" aria-hidden="true"></span> SHIPS IN DRY-RUN · TOUCHES NOTHING UNTIL YOU SAY SO</p>
       </div>
