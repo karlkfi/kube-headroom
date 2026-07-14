@@ -77,7 +77,19 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 .PHONY: check
-check: lint verify-generate verify-helm-sync helm-lint helm-template backlog-lint shellcheck doc-links test ## Run all fast pre-review checks (mirrors CI). Green here == green in CI.
+check: lint verify-generate verify-vendor verify-helm-sync helm-lint helm-template backlog-lint shellcheck doc-links test ## Run all fast pre-review checks (mirrors CI). Green here == green in CI.
+
+.PHONY: vendor
+vendor: ## Refresh go.mod/go.sum and the checked-in vendor/ tree.
+	go mod tidy
+	go mod vendor
+
+.PHONY: verify-vendor
+verify-vendor: vendor ## Fail if go.mod/go.sum or vendor/ are out of date.
+	@git diff --exit-code -- go.mod go.sum vendor || { \
+		echo "ERROR: vendored dependencies are out of date. Run 'make vendor' and commit the result."; \
+		exit 1; \
+	}
 
 .PHONY: verify-generate
 verify-generate: manifests generate ## Fail if generated manifests/code are out of date.

@@ -76,6 +76,12 @@ kubecontext.
 - **Don't delete `// +kubebuilder:scaffold:*` comments** — the CLI injects code
   at them. Scaffold new APIs/webhooks with `kubebuilder create api|webhook`
   rather than creating files by hand.
+- **Dependencies are vendored** — the root module's deps live in `vendor/`
+  (checked in), so `go`/`make` build in `-mod=vendor` mode. Never hand-edit
+  `vendor/`. After changing imports or `go.mod`, run `make vendor` (`go mod tidy`
+  + `go mod vendor`) and commit `go.mod`, `go.sum`, and `vendor/` together; CI's
+  `verify-vendor` fails on drift. The separate `tools/` module is **not**
+  vendored — its build tools resolve from the module cache.
 - **e2e requires a dedicated kind cluster** (never a real dev/prod context).
 - **Editing `.githooks/*` from a git worktree?** `core.hooksPath` is an
   absolute path to the *main* checkout's `.githooks`, so `git commit` in a
@@ -94,6 +100,7 @@ kubecontext.
 | Policy unit tests (fast, no cluster) | `go test ./internal/policy/` |
 | Full unit tests (envtest) | `make test` |
 | Regenerate CRDs/RBAC + deepcopy, sync charts | `make manifests generate helm-sync` |
+| Refresh vendored deps (after import/`go.mod` changes) | `make vendor` |
 | Build the manager binary | `make build` |
 | Lint | `make lint` (fix: `make lint-fix`) |
 | Lint / render the charts | `make helm-lint helm-template` |
