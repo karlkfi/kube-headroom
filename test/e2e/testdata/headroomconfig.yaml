@@ -27,3 +27,9 @@ spec:
   debouncePeriod: 1s
   rateLimits:
     perNodePatchesPerSecond: 10
+  # Birth-limit mutating webhook seeds limits.cpu = requests.cpu × initialMultiplier
+  # at admission (§6.5). Stated explicitly (not left to the CRD default) so the
+  # webhook birth-limit e2e case can assert an exact value — request × 2.
+  webhook:
+    enabled: true
+    initialMultiplier: "2"
