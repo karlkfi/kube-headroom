@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -63,10 +64,17 @@ type NodeReconciler struct {
 
 	// FieldManager is the SSA owner for limits.cpu (defaults to "headroom").
 	FieldManager string
-	// DebouncePeriod delays enqueued node keys so a rollout computes once.
+	// DebouncePeriod, when set, forces the enqueue debounce and overrides the
+	// spec.debouncePeriod resolved from the live config. Left zero in production
+	// (the config drives the debounce); tests set it for deterministic timing.
 	DebouncePeriod time.Duration
 	// BackoffPeriod is the ineligibility window after a refused resize.
 	BackoffPeriod time.Duration
+
+	// dynamicDebounce caches spec.debouncePeriod (nanoseconds) as of the last
+	// reconcile so the event handler — which runs outside Reconcile and has no
+	// config in hand — enqueues node keys with the configured delay (§6.2).
+	dynamicDebounce atomic.Int64
 
 	mu       sync.Mutex
 	limiters map[string]*rate.Limiter // node name -> per-node patch token bucket
@@ -104,6 +112,9 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	if err != nil {
 		return ctrl.Result{}, fmt.Errorf("load config: %w", err)
 	}
+	// Publish the resolved debounce so subsequent watch events enqueue with the
+	// configured delay rather than the hardcoded default (§6.2).
+	r.setDebounce(cfg.debouncePeriod)
 
 	var node corev1.Node
 	if err := r.Get(ctx, types.NamespacedName{Name: req.Name}, &node); err != nil {
@@ -433,9 +444,34 @@ func (r *NodeReconciler) fieldManager() string {
 	return defaultFieldManager
 }
 
+// debouncePeriod is the static fallback used when resolving a config that does
+// not set spec.debouncePeriod: an explicit struct override, else the default.
 func (r *NodeReconciler) debouncePeriod() time.Duration {
 	if r.DebouncePeriod > 0 {
 		return r.DebouncePeriod
+	}
+	return defaultDebouncePeriod
+}
+
+// setDebounce records the debounce resolved from the live config so the event
+// handler picks it up on the next enqueue. A zero/negative value is ignored so
+// a transient bad read never collapses the debounce.
+func (r *NodeReconciler) setDebounce(d time.Duration) {
+	if d > 0 {
+		r.dynamicDebounce.Store(int64(d))
+	}
+}
+
+// enqueueDelay is the debounce the event handler applies to a node key. The
+// explicit struct override wins (test determinism); otherwise it reflects
+// spec.debouncePeriod as of the last reconcile, falling back to the default
+// until the first reconcile has published a value.
+func (r *NodeReconciler) enqueueDelay() time.Duration {
+	if r.DebouncePeriod > 0 {
+		return r.DebouncePeriod
+	}
+	if d := r.dynamicDebounce.Load(); d > 0 {
+		return time.Duration(d)
 	}
 	return defaultDebouncePeriod
 }
@@ -496,7 +532,7 @@ func (r *NodeReconciler) podEventHandler() handler.EventHandler {
 		if nodeName == "" {
 			return
 		}
-		q.AddAfter(reconcile.Request{NamespacedName: types.NamespacedName{Name: nodeName}}, r.debouncePeriod())
+		q.AddAfter(reconcile.Request{NamespacedName: types.NamespacedName{Name: nodeName}}, r.enqueueDelay())
 	}
 	return handler.Funcs{
 		CreateFunc: func(_ context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
