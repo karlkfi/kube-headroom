@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "kube-headroom-crds values",
+  "description": "Value surface for the kube-headroom-crds chart (the standalone HeadroomConfig CRD).",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "keep": {
+      "description": "Annotate the CRD with helm.sh/resource-policy: keep so `helm uninstall` leaves the CRD (and all live HeadroomConfigs) in place.",
+      "type": "boolean"
+    }
+  }
+}

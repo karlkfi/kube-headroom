@@ -1,0 +1,210 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "kube-headroom operator values",
+  "description": "Value surface for the kube-headroom operator chart. additionalProperties is false so a mistyped toggle (e.g. webhook.enabled instead of webhook.enable) is rejected at install time rather than silently ignored.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tag": {
+          "description": "Defaults to the chart appVersion when empty.",
+          "type": "string"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "replicas": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "limits": {
+          "$ref": "#/definitions/resourceQuantities"
+        },
+        "requests": {
+          "$ref": "#/definitions/resourceQuantities"
+        }
+      }
+    },
+    "nodeSelector": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "tolerations": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "affinity": {
+      "type": "object"
+    },
+    "topologySpreadConstraints": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "extraArgs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "extraEnv": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "leaderElection": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "aggregationRoles": {
+          "description": "Render the CRD admin/editor/viewer helper ClusterRoles.",
+          "type": "boolean"
+        }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable": {
+          "type": "boolean"
+        },
+        "minAvailable": {
+          "description": "Absolute count (integer) or percentage (string, e.g. \"50%\").",
+          "type": ["integer", "string"]
+        }
+      }
+    },
+    "webhook": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable": {
+          "description": "Birth-limit mutating admission webhook (design §6.5).",
+          "type": "boolean"
+        },
+        "certSecretName": {
+          "description": "Bring-your-own TLS Secret name, used only when certmanager.enable=false.",
+          "type": "string"
+        },
+        "caBundle": {
+          "description": "Base64-encoded PEM CA bundle for the MutatingWebhookConfiguration, used only when certmanager.enable=false.",
+          "type": "string"
+        },
+        "namespaceSelector": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "type": "string",
+              "minLength": 1
+            },
+            "value": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "certmanager": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "certManagerTLS": {
+          "type": "boolean"
+        }
+      }
+    },
+    "prometheus": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable": {
+          "type": "boolean"
+        }
+      }
+    },
+    "headroomConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": {
+          "description": "Render the singleton HeadroomConfig (name: cluster).",
+          "type": "boolean"
+        },
+        "spec": {
+          "description": "HeadroomConfig .spec, passed through to the CR and validated by the CRD schema.",
+          "type": "object"
+        }
+      }
+    }
+  },
+  "definitions": {
+    "resourceQuantities": {
+      "description": "Map of resource name (cpu, memory, ...) to a Kubernetes quantity string.",
+      "type": "object",
+      "additionalProperties": {
+        "type": ["string", "integer"]
+      }
+    }
+  }
+}
