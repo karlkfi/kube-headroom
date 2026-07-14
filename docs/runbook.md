@@ -55,9 +55,36 @@ properties; the ResourceQuota one is the sharp edge.
 The rollout is deliberately staged: **dry-run → observe → enforce**, one
 namespace at a time.
 
-1. **Install the CRD, RBAC, and manager.** (Deploy manifests land with the
-   controller; until then, `make run` against the target context.) The
-   `HeadroomConfig` singleton is named `cluster` and defaults to `dryRun: true`:
+1. **Install the CRD, then the operator, with Helm.** Headroom ships two OCI
+   charts on ghcr: `kube-headroom-crds` (the CRD, cluster-wide, installed once)
+   and `kube-headroom` (the namespaced operator). The CRD chart carries
+   `helm.sh/resource-policy: keep`, so a later `helm uninstall` never drops live
+   `HeadroomConfig`s. cert-manager must be present (it issues the webhook
+   serving cert).
+
+   ```sh
+   # CRD chart — cluster-wide, on its own lifecycle:
+   helm upgrade --install kube-headroom-crds \
+     oci://ghcr.io/karlkfi/charts/kube-headroom-crds
+
+   # Operator chart — into its namespace (label it for restricted PSA first if
+   # your cluster enforces Pod Security):
+   helm upgrade --install kube-headroom \
+     oci://ghcr.io/karlkfi/charts/kube-headroom \
+     --namespace kube-headroom-system --create-namespace
+   ```
+
+   From a checkout, `make install` (CRD chart) then `make deploy IMG=…`
+   (operator) do the same against your current kubecontext. Tune the operator
+   through `values.yaml` — `image.repository`/`tag`, `replicas`, `resources`,
+   the `webhook`/`certmanager`/`prometheus`/`networkPolicy` toggles — instead of
+   editing manifests. Render locally to preview: `helm template kube-headroom
+   oci://ghcr.io/karlkfi/charts/kube-headroom`. Already running an older
+   kustomize-deployed build? See [migrating to Helm](helm-migration.md).
+
+   Then create the `HeadroomConfig` singleton (named `cluster`, defaults to
+   `dryRun: true`) — either from the sample, or by setting
+   `headroomConfig.create=true` on the operator chart:
 
    ```sh
    kubectl apply -k config/samples   # creates HeadroomConfig/cluster (dryRun: true)
@@ -191,8 +218,8 @@ Two ways the serving cert gets provisioned:
   never written to a Secret and rotates on every restart, so scrapers **cannot
   pin a CA** — they can only `insecureSkipVerify: true`. Fine for a quick look;
   **not for production**, and it is exactly the "stuck on self-signed" trap.
-- **cert-manager-issued (recommended for production).** A cert-manager
-  `Certificate` (`config/certmanager/certificate-metrics.yaml`) issues into the
+- **cert-manager-issued (recommended for production).** The operator chart
+  templates a cert-manager `Certificate` that issues into the
   `metrics-server-cert` Secret; the manager mounts it and is pointed at it with
   `--metrics-cert-path=/tmp/k8s-metrics-server/metrics-certs`. Now the cert is
   stable, has the service DNS SANs, and its `ca.crt` is a real trust anchor a
@@ -200,24 +227,25 @@ Two ways the serving cert gets provisioned:
 
 ### Enabling the cert-manager wiring
 
-Requires cert-manager installed in the cluster. In `config/`, uncomment the
-`CERTMANAGER`, `METRICS-WITH-CERTS`, and `PROMETHEUS-WITH-CERTS` markers — they
-are cross-referenced so all three must move together:
+Requires cert-manager installed in the cluster (`certmanager.enable=true`, the
+default). Set **`metrics.certManagerTLS=true`** on the operator chart — one flag
+turns on all three coupled pieces:
 
-1. **`config/default/kustomization.yaml`** — uncomment the
-   `[METRICS-WITH-CERTS]` patch (`cert_metrics_manager_patch.yaml`) so the
-   manager Deployment mounts `metrics-server-cert` and gets the
-   `--metrics-cert-path` arg, and uncomment the two metrics `replacements`
-   blocks that substitute the real `SERVICE_NAME.SERVICE_NAMESPACE` into the
-   `Certificate` SANs and the ServiceMonitor `serverName`. (`../certmanager` is
-   already in `resources`.)
-2. **`config/prometheus/kustomization.yaml`** — uncomment the
-   `[PROMETHEUS-WITH-CERTS]` `patches` block (`monitor_tls_patch.yaml`). This
-   flips the ServiceMonitor from `insecureSkipVerify: true` to verifying against
-   the `metrics-server-cert` Secret's `ca.crt` (and presenting the client cert).
+```sh
+helm upgrade --install kube-headroom \
+  oci://ghcr.io/karlkfi/charts/kube-headroom \
+  --namespace kube-headroom-system \
+  --set metrics.certManagerTLS=true \
+  --set prometheus.enable=true
+```
 
-After uncommenting, `make build-installer` / `kubectl apply -k config/default`
-and confirm the manager logs `Initializing metrics certificate watcher using
+This mounts `metrics-server-cert` into the manager Deployment and adds the
+`--metrics-cert-path` arg, issues the metrics `Certificate` with the real
+service DNS SANs, and — when `prometheus.enable=true` — renders the
+ServiceMonitor verifying against the Secret's `ca.crt` (and presenting the
+client cert) instead of `insecureSkipVerify: true`.
+
+Confirm the manager logs `Initializing metrics certificate watcher using
 provided certificates` — that line means it picked up the mounted cert instead
 of self-signing.
 
