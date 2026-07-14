@@ -281,23 +281,32 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 			managed = ok
 		}
 
+		// A managed pod whose kubelet already refused the last resize should back
+		// off rather than be re-patched (§6.4). Detecting the Infeasible condition
+		// from the pod's own status — not from a synchronous patch failure — arms
+		// the window on a steady reconcile and, crucially, reconstructs backoff
+		// after a restart/rollout/leader-failover that lost the in-memory map
+		// (Q37): on the pod's first reconcile post-startup it re-enters backoff
+		// from its observable status instead of being retried immediately.
+		// Excluding it from this pass (managed = false, contributes slack only)
+		// means no duplicate failing patch — and no spurious CPULimitAdjusted event
+		// or result=applied count — is issued before the window takes hold. The
+		// branch is reached only when the pod is not already backed off, so the
+		// warning event and result=infeasible counter fire once per window, not per
+		// reconcile — a sustained count is the alerting signal (§6.4). The
+		// quota-403 refusal is not re-derivable from pod status, so after a restart
+		// it re-fails once before backing off (classifyResizeError); that residual
+		// is accepted.
+		if managed && podResizeInfeasible(pod) {
+			resizesTotal.WithLabelValues(resultInfeasible).Inc()
+			r.recordEvent(pod, corev1.EventTypeWarning, reasonResizeInfeasible,
+				fmt.Sprintf("kubelet reports the CPU-limit resize is infeasible; backing off %s", r.backoffPeriod()))
+			r.setBackoff(pod)
+			managed = false
+		}
+
 		inputs = append(inputs, buildPodInput(pod, rcs, managed))
 		byKey[pod.Namespace+"/"+pod.Name] = pod
-
-		if managed {
-			// A managed pod whose kubelet refused the last resize should back off
-			// (§6.4); detect the Infeasible condition here so a steady reconcile
-			// applies the window without needing the patch to fail synchronously.
-			// This branch is reached only when the pod is not already backed off,
-			// so the event and counter fire once per backoff window, not per
-			// reconcile — a sustained count is the alerting signal (§6.4).
-			if podResizeInfeasible(pod) {
-				resizesTotal.WithLabelValues(resultInfeasible).Inc()
-				r.recordEvent(pod, corev1.EventTypeWarning, reasonResizeInfeasible,
-					fmt.Sprintf("kubelet reports the CPU-limit resize is infeasible; backing off %s", r.backoffPeriod()))
-				r.setBackoff(pod)
-			}
-		}
 	}
 	return inputs, byKey, nil
 }
