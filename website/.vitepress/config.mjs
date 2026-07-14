@@ -36,11 +36,12 @@ export default defineConfig({
   ],
   themeConfig: {
     siteTitle: "KUBE-HEADROOM / DOCS",
-    // the A3 mark in the navbar + the title both return to the landing page
-    // (logoLink is used raw, not base-prefixed — same absolute path locally
-    // and on Pages). The logo file lives in docs/public/.
+    // the A3 mark in the navbar + the title both return to the landing page.
+    // logoLink is used raw (not base-prefixed) and target:_self stops the
+    // VitePress SPA router from intercepting the click and resolving it
+    // inside the docs app. The logo file lives in docs/public/.
     logo: "/logo.svg",
-    logoLink: "/kube-headroom/",
+    logoLink: { link: "/kube-headroom/", target: "_self" },
     nav: [
       { text: "Design", link: "/design" },
       { text: "Runbook", link: "/runbook" },
