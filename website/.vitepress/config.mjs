@@ -28,6 +28,8 @@ export default defineConfig({
       alias: [
         { find: /^vue\/server-renderer$/, replacement: resolveLocal("@vue/server-renderer/dist/server-renderer.esm-bundler.js") },
         { find: /^vue$/, replacement: resolveLocal("vue/dist/vue.runtime.esm-bundler.js") },
+        // navbar title: two real anchors (brand → landing, /DOCS → docs home)
+        { find: /^.*\/VPNavBarTitle\.vue$/, replacement: fileURLToPath(new URL("./theme/CustomNavBarTitle.vue", import.meta.url)) },
       ],
     },
   },
@@ -35,10 +37,10 @@ export default defineConfig({
     ["link", { rel: "icon", type: "image/svg+xml", href: "/kube-headroom/favicon.svg" }],
   ],
   themeConfig: {
-    // Icon + "KUBE-HEADROOM" link to the landing page; the "/ DOCS" suffix
-    // (added in theme/index.js, since the slot renders inside the anchor)
-    // links to the docs home. logoLink is used raw (not base-prefixed) and
-    // target:_self stops the SPA router from intercepting the navigation.
+    // The navbar title is a custom component (theme/CustomNavBarTitle.vue,
+    // swapped in via the vite alias above): brand anchor → landing page,
+    // "/ DOCS" anchor → docs home. siteTitle/logo/logoLink are unused there
+    // but kept for anything else that reads them (e.g. local search).
     siteTitle: "KUBE-HEADROOM",
     logo: "/logo.svg",
     logoLink: { link: "/kube-headroom/", target: "_self" },

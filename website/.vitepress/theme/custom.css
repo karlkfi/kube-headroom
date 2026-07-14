@@ -24,17 +24,6 @@
   letter-spacing: 0.5px;
 }
 
-/* "/ DOCS" suffix in the navbar title: separate click target (docs home)
-   inside the landing-page anchor */
-.title-docs-link {
-  margin-left: 7px;
-  color: var(--vp-c-text-3);
-  cursor: pointer;
-}
-.title-docs-link:hover,
-.title-docs-link:focus-visible {
-  color: var(--vp-c-brand-1);
-}
 
 /* Links in body text get the signal color on hover-glow, no underline noise */
 .vp-doc a { text-decoration-style: dotted; }
