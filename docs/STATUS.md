@@ -12,9 +12,6 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q30"></a>Q30 | Helm: cert-manager-off leaves webhook operator unstartable | `webhook` `infra` | 🔲 | S | With `certmanager.enable=false` + `webhook.enable=true`, the operator mounts a never-created cert secret and the webhook has no caBundle. Add a BYO-cert path (certSecretName/caBundle). |
-| <a id="Q31"></a>Q31 | Test the §6.4 resize-error outcomes | `tests` | 🔲 | S | `classifyResizeError` (conflict→requeue, 403→quota-denied+backoff+event, else bubble) has zero tests. Add fake-client interceptor tests asserting each counter, event, and requeue/backoff. |
-| <a id="Q32"></a>Q32 | Test the Infeasible→backoff→exclusion cycle | `tests` | 🔲 | S | The Infeasible path (event, `resultInfeasible`, setBackoff, inBackoff exclusion, clock-driven expiry) is entirely untested. Add an envtest spec driving it via the injectable clock. |
 | <a id="Q33"></a>Q33 | Helm: CRD-registration race with crds.install + headroomConfig.create | `infra` | 🔲 | S | CRD lives in templates/, so Helm doesn't wait for Established before creating the CR — a both-flags-on install can fail "no matches for kind HeadroomConfig". Order the CR via a post-install hook. |
 | <a id="Q34"></a>Q34 | Test the per-node rate-limiter break path | `tests` | 🔲 | S | Token-bucket break + RequeueAfter (§7 write-pressure bound) is untested. Add an envtest with low perNodePPS and N>1 pods on a node, asserting bounded patches and a non-zero RequeueAfter. |
 | <a id="Q35"></a>Q35 | Jitter the restart reconcile wave | `controller` | 🔲 | S | §8.6/§9.4.4 require jittered timing, but `enqueueDelay` is a fixed debounce (no rand in the code); on restart every node enqueues in one synchronized wave. Add splay to the first per-node enqueue. |
