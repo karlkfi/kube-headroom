@@ -8,13 +8,12 @@
 # produces byte-identical output, so CI can assert `git diff --exit-code` on the
 # charts to catch a stale sync.
 #
-#   - CRD  -> charts/kube-headroom-crds/templates/headroomconfig-crd.yaml    (the
-#            standalone CRD chart), and, gated on .Values.crds.install, into
-#            charts/kube-headroom/templates/crd.yaml (a one-shot install of the
-#            operator that also lays down the CRD). Both are the generated CRD
-#            verbatim with only Helm directives injected for the
-#            resource-policy: keep annotation and chart labels — no YAML
-#            round-trip, so the CEL schema is copied untouched.
+#   - CRD  -> charts/kube-headroom-crds/templates/headroomconfig-crd.yaml (the
+#            standalone CRD chart — the ONLY place the CRD lives; the operator
+#            chart never renders it). The generated CRD verbatim with only Helm
+#            directives injected for the resource-policy: keep annotation and
+#            chart labels — no YAML round-trip, so the CEL schema is copied
+#            untouched.
 #   - RBAC rules and webhook config are copied verbatim into the operator
 #     chart's files/ dir; their templates load them with .Files.Get so the
 #     generated payload stays authoritative while names/namespaces/labels are
@@ -68,23 +67,12 @@ emit_crd_template() {
 	} >"${dest}"
 }
 
-# --- CRD chart: keep gated on .Values.keep (default true). ------------------
+# --- CRD chart: the only chart that renders the CRD. keep gated on
+# .Values.keep (default true). The operator chart deliberately does NOT render
+# the CRD — it installs separately, cluster-wide, on its own lifecycle.
 emit_crd_template "${crd_src}" \
 	"${crds_chart}/templates/headroomconfig-crd.yaml" \
 	"kube-headroom-crds.labels"
-
-# --- Operator chart: only rendered when .Values.crds.install is set. In that
-# path .Values.keep is unset, so the `{{- if .Values.keep }}` guard is replaced
-# below with the operator chart's own crds.keep gate (default true).
-emit_crd_template "${crd_src}" \
-	"${operator_chart}/templates/crd.yaml" \
-	"kube-headroom.labels" \
-	".Values.crds.install"
-# Retarget the keep guard from the CRD chart's `.Values.keep` to the operator
-# chart's `.Values.crds.keep` (default true).
-sed -i.bak 's/{{- if \.Values\.keep }}/{{- if (default true .Values.crds.keep) }}/' \
-	"${operator_chart}/templates/crd.yaml"
-rm -f "${operator_chart}/templates/crd.yaml.bak"
 
 # --- Operator chart data files ---------------------------------------------
 # Copied verbatim; the chart templates wrap them with name/label/namespace/toggle

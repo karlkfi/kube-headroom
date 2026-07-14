@@ -49,6 +49,10 @@ render "cert-manager off + webhook off" \
 render "prometheus on" --set prometheus.enable=true
 render "network-policy off" --set networkPolicy.enable=false
 render "metrics cert-manager TLS" --set metrics.certManagerTLS=true
+# The operator chart never renders the CRD (it ships as the standalone
+# kube-headroom-crds chart). headroomConfig.create renders the singleton CR as a
+# normal resource, against that already-registered CRD.
+render "headroomConfig on (CRD pre-installed)" --set headroomConfig.create=true
 
 # Negative case: cert-manager off + webhook on with NO BYO cert must FAIL to
 # render — the guard (kube-headroom.webhookCertSecretName) that stops the chart

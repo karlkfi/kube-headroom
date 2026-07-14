@@ -20,10 +20,12 @@ keywords:
   - cpu
   - autoscaling
   - in-place-resize
-# The CRD ships as its OWN chart (kube-headroom-crds), which admins normally
-# install separately — cluster-wide, on a lifecycle independent of this
-# namespaced operator (see docs/plan/archive/kustomize-helm-migration.md). This chart is
-# therefore NOT wired to it as a Helm subchart dependency. For a one-shot
-# install that also lays down the CRD, set crds.install=true: the operator chart
-# then renders the same generated CRD in-place (templates/crd.yaml, synced by
-# `make helm-sync`), avoiding the fragile file:// subchart-vendoring path.
+# The CRD ships as its OWN chart (kube-headroom-crds), installed separately —
+# cluster-wide, on a lifecycle independent of this namespaced operator (see
+# docs/plan/archive/kustomize-helm-migration.md). This chart never renders the
+# CRD: co-installing a CRD and resources that use it in one Helm release is an
+# anti-pattern (Helm resolves kinds before applying, so a HeadroomConfig would
+# race the CRD registration), and bundling the CRD here would also mix
+# cluster-wide schema changes into routine operator upgrades. Install the
+# kube-headroom-crds chart first; for a single-file bundle use
+# `make build-installer`, which renders both charts into dist/install.yaml.

@@ -112,16 +112,12 @@ prometheus:
 networkPolicy:
   enable: true
 
-# Render the HeadroomConfig CRD in-place as part of THIS release, for a one-shot
-# install. Off by default: the recommended path is to install the standalone
-# kube-headroom-crds chart cluster-wide, on a lifecycle independent of the
-# operator. When true, the CRD carries helm.sh/resource-policy: keep, so
-# `helm uninstall` of the operator leaves live HeadroomConfigs intact.
-crds:
-  install: false
-
 # Optionally render the singleton HeadroomConfig (name: cluster). Off by
 # default so the chart doesn't impose a policy; enable and tune spec to seed one.
+# The CRD is NOT part of this chart — install the standalone kube-headroom-crds
+# chart first (cluster-wide, on its own lifecycle) so the HeadroomConfig kind is
+# already registered when this renders. Enabling this before the CRD exists fails
+# with "no matches for kind HeadroomConfig".
 headroomConfig:
   create: false
   spec:

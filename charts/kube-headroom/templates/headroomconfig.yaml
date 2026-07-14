@@ -2,8 +2,13 @@
 {{/*
 The singleton HeadroomConfig (name MUST be `cluster`, enforced by a CEL rule).
 Off by default; enable via headroomConfig.create and tune headroomConfig.spec.
-Requires the kube-headroom-crds chart (or crds.install=true) to be installed
-first so the CRD exists.
+
+The HeadroomConfig CRD is not part of this chart — install the standalone
+kube-headroom-crds chart first, so the kind is already registered when this
+renders. (Co-installing a CR with its own CRD in one Helm release races the REST
+mapper and fails "no matches for kind HeadroomConfig"; keeping the CRD on its own
+chart avoids that and keeps cluster-wide schema changes off the operator's
+upgrade path.)
 */}}
 apiVersion: kube-headroom.dev/v1alpha1
 kind: HeadroomConfig
