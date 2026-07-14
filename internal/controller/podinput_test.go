@@ -120,6 +120,33 @@ func TestSplitLimitInvariants(t *testing.T) {
 	}
 }
 
+func TestEnqueueDelay(t *testing.T) {
+	// Before any reconcile, with no override, the event handler falls back to the
+	// default debounce.
+	r := &NodeReconciler{}
+	if got := r.enqueueDelay(); got != defaultDebouncePeriod {
+		t.Errorf("initial enqueueDelay = %v, want default %v", got, defaultDebouncePeriod)
+	}
+
+	// A reconcile publishing spec.debouncePeriod makes the event handler honor it.
+	r.setDebounce(1 * time.Second)
+	if got := r.enqueueDelay(); got != 1*time.Second {
+		t.Errorf("after setDebounce(1s), enqueueDelay = %v, want 1s", got)
+	}
+
+	// A non-positive resolved value never collapses the last good debounce.
+	r.setDebounce(0)
+	if got := r.enqueueDelay(); got != 1*time.Second {
+		t.Errorf("after setDebounce(0), enqueueDelay = %v, want 1s (unchanged)", got)
+	}
+
+	// An explicit struct override wins over the resolved config (test determinism).
+	r.DebouncePeriod = 50 * time.Millisecond
+	if got := r.enqueueDelay(); got != 50*time.Millisecond {
+		t.Errorf("with override, enqueueDelay = %v, want 50ms", got)
+	}
+}
+
 func TestResolveConfig(t *testing.T) {
 	tru := true
 	hc := &kubeheadroomv1alpha1.HeadroomConfig{Spec: kubeheadroomv1alpha1.HeadroomConfigSpec{

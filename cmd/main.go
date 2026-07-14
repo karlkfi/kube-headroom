@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -9,10 +10,14 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
@@ -25,6 +30,14 @@ import (
 	"github.com/karlkfi/kube-headroom/internal/controller"
 	webhookv1 "github.com/karlkfi/kube-headroom/internal/webhook/v1"
 	// +kubebuilder:scaffold:imports
+)
+
+// Documented defaults for the controller's global Kubernetes client rate limits
+// (§8.6), mirroring the HeadroomConfig CRD defaults for rateLimits.clientQPS and
+// rateLimits.clientBurst. Used when the singleton config is absent at startup.
+const (
+	defaultClientQPS   float32 = 50
+	defaultClientBurst int     = 100
 )
 
 var (
@@ -145,7 +158,17 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	// Apply the configured global client QPS/burst to the REST config before the
+	// manager builds its clients, so spec.rateLimits bounds cluster-wide write
+	// pressure (§8.6) — not just the per-node token bucket. A short bootstrap read
+	// of the singleton is needed because the manager's cache isn't up yet.
+	restConfig := ctrl.GetConfigOrDie()
+	qps, burst := bootstrapRateLimits(context.Background(), restConfig)
+	restConfig.QPS = qps
+	restConfig.Burst = burst
+	setupLog.Info("Applied client rate limits", "qps", qps, "burst", burst)
+
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
@@ -207,4 +230,44 @@ func main() {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}
+}
+
+// bootstrapRateLimits reads the singleton HeadroomConfig with a short-lived
+// direct client (the manager's cache isn't running yet) and returns the client
+// QPS/burst to apply to the REST config. Any failure — client build error,
+// config absent, or read error — falls back to the documented defaults so a
+// fresh install still starts with a bounded write budget (§8.6).
+func bootstrapRateLimits(ctx context.Context, restConfig *rest.Config) (float32, int) {
+	c, err := client.New(restConfig, client.Options{Scheme: scheme})
+	if err != nil {
+		setupLog.Info("Bootstrap client for rate-limit read failed; using default client rate limits",
+			"err", err.Error())
+		return defaultClientQPS, defaultClientBurst
+	}
+	var hc kubeheadroomv1alpha1.HeadroomConfig
+	if err := c.Get(ctx, types.NamespacedName{Name: kubeheadroomv1alpha1.SingletonName}, &hc); err != nil {
+		if !apierrors.IsNotFound(err) {
+			setupLog.Info("Reading HeadroomConfig for rate limits failed; using defaults", "err", err.Error())
+		}
+		return defaultClientQPS, defaultClientBurst
+	}
+	return rateLimitsFrom(&hc)
+}
+
+// rateLimitsFrom resolves the client QPS/burst from a HeadroomConfig, applying
+// the documented defaults for any unset (zero) field. The apiserver normally
+// defaults these via the CRD schema; the explicit fallback keeps the controller
+// correct even against a config written without them.
+func rateLimitsFrom(hc *kubeheadroomv1alpha1.HeadroomConfig) (float32, int) {
+	qps, burst := defaultClientQPS, defaultClientBurst
+	if hc == nil {
+		return qps, burst
+	}
+	if v := hc.Spec.RateLimits.ClientQPS; v > 0 {
+		qps = float32(v)
+	}
+	if v := hc.Spec.RateLimits.ClientBurst; v > 0 {
+		burst = int(v)
+	}
+	return qps, burst
 }
