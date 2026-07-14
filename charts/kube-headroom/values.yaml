@@ -69,6 +69,19 @@ podDisruptionBudget:
 # pod-create time for pods the controller can't reach in time.
 webhook:
   enable: true
+  # Bring-your-own serving cert, used only when certmanager.enable=false. Without
+  # cert-manager nothing issues the webhook's TLS Secret or injects the CA, so
+  # you must supply both:
+  #   certSecretName — name of a pre-created Secret (type kubernetes.io/tls, keys
+  #     tls.crt/tls.key) in the release namespace. It is mounted into the manager
+  #     in place of the cert-manager-issued webhook-server-cert. Rendering fails
+  #     if certmanager.enable=false and this is empty.
+  #   caBundle — base64-encoded PEM CA bundle stamped into the
+  #     MutatingWebhookConfiguration clientConfig so the apiserver trusts the
+  #     webhook. Leave empty only if the CA is injected out-of-band.
+  # Both are ignored when certmanager.enable=true (cert-manager handles them).
+  certSecretName: ""
+  caBundle: ""
   # Only fire the webhook for namespaces carrying this label (§6.5). Must track
   # the HeadroomConfig NamespaceSelector; a looser selector here only costs
   # extra (ignored) invocations, never correctness.
@@ -78,7 +91,8 @@ webhook:
 
 # cert-manager issues the webhook (and optionally metrics) serving certificate
 # and injects the CA into the webhook configuration. Requires cert-manager in
-# the cluster. Disable to supply certs another way.
+# the cluster. Disable to supply the webhook cert yourself via
+# webhook.certSecretName + webhook.caBundle (see above).
 certmanager:
   enable: true
 

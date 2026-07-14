@@ -20,8 +20,9 @@ sideEffects, timeoutSeconds) is synced verbatim from the generated
 config/webhook/manifests.yaml via `make helm-sync`, so the controller-gen
 markers stay authoritative. The template overrides only the clientConfig
 service coordinates (name + release namespace), adds the §6.5 namespaceSelector
-(the manifests_patch.yaml behavior), and — when cert-manager is enabled — the
-inject-ca-from annotation.
+(the manifests_patch.yaml behavior), and the caBundle source: the
+inject-ca-from annotation when cert-manager is enabled, otherwise the
+bring-your-own webhook.caBundle stamped into each webhook's clientConfig.
 */}}
 {{- $webhooks := (.Files.Get "files/webhook-manifests.yaml" | fromYaml).webhooks }}
 apiVersion: admissionregistration.k8s.io/v1
@@ -40,6 +41,9 @@ webhooks:
     admissionReviewVersions:
       {{- toYaml $w.admissionReviewVersions | nindent 6 }}
     clientConfig:
+      {{- if and (not $.Values.certmanager.enable) $.Values.webhook.caBundle }}
+      caBundle: {{ $.Values.webhook.caBundle }}
+      {{- end }}
       service:
         name: {{ include "kube-headroom.fullname" $ }}-webhook-service
         namespace: {{ $.Release.Namespace }}

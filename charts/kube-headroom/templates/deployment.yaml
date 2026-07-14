@@ -121,5 +121,5 @@ spec:
         {{- if .Values.webhook.enable }}
         - name: webhook-certs
           secret:
-            secretName: webhook-server-cert
+            secretName: {{ include "kube-headroom.webhookCertSecretName" . }}
         {{- end }}
