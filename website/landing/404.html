@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CH 404 — SIGNAL LOST · Headroom</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/svg+xml" href="/kube-headroom/favicon.svg">
+<!-- Full CRT moment: this page is intentionally louder than the rest of the
+     site (see the design system's "moments only" rule). Self-contained CSS —
+     GitHub Pages serves 404.html at arbitrary missing paths, where relative
+     asset URLs would break. -->
+<style>
+  :root {
+    --ground: #020304;
+    --text: #eafcff;
+    --muted: #b8e9d9;
+    --faint: #5f8a78;
+    --cyan: #22e6ff;
+    --magenta: #ff2d95;
+    --amber: #ffd23f;
+    --phosphor: #7df9c2;
+    --mono: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    --impact: Impact, "Arial Black", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: radial-gradient(ellipse at 50% 35%, #0a1018 0%, var(--ground) 78%);
+    color: var(--text);
+    font-family: var(--mono);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+  }
+  /* scanlines + curvature vignette */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,.32) 0 1px, transparent 1px 3px);
+    z-index: 4;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%);
+    z-index: 5;
+  }
+  .osd {
+    position: fixed;
+    font-size: 13px;
+    letter-spacing: 3px;
+    color: var(--phosphor);
+    text-shadow: 0 0 10px rgba(125,249,194,.8);
+    z-index: 6;
+  }
+  .osd.tl { top: 20px; left: 26px; }
+  .osd.tr { top: 20px; right: 26px; }
+  .osd.bl { bottom: 18px; left: 26px; }
+  .osd.br { bottom: 18px; right: 26px; }
+
+  main { text-align: center; position: relative; z-index: 3; padding: 24px; }
+  .code {
+    font-family: var(--impact);
+    font-weight: 900;
+    font-size: clamp(96px, 24vw, 220px);
+    line-height: 1;
+    letter-spacing: 4px;
+    color: var(--text);
+    position: relative;
+    text-shadow: 0 0 26px rgba(34,230,255,.6),
+      -5px 3px 0 rgba(255,45,149,.7), 5px -3px 0 rgba(34,230,255,.7);
+  }
+  .lost {
+    margin-top: 14px;
+    font-size: clamp(13px, 2.6vw, 18px);
+    letter-spacing: 8px;
+    color: var(--amber);
+  }
+  .sub { margin-top: 22px; font-size: 13.5px; color: var(--muted); letter-spacing: 1px; }
+  .links { margin-top: 34px; display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .links a {
+    color: var(--cyan);
+    text-decoration: none;
+    border: 1px solid rgba(34,230,255,.45);
+    border-radius: 6px;
+    padding: 9px 18px;
+    font-size: 12.5px;
+    letter-spacing: 2px;
+  }
+  .links a:hover { background: rgba(34,230,255,.1); border-color: var(--cyan); }
+  a:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .code { animation: flicker 4s infinite steps(1); }
+    .code .slice {
+      position: absolute;
+      inset: 0;
+      color: var(--text);
+      text-shadow: -7px 0 0 rgba(255,45,149,.8);
+      clip-path: inset(38% 0 52% 0);
+      animation: slice 4s infinite steps(1);
+    }
+    .track {
+      position: fixed;
+      left: 0; right: 0;
+      height: 28px;
+      z-index: 4;
+      pointer-events: none;
+      background: linear-gradient(to bottom, transparent,
+        rgba(180,255,255,.06) 40%, rgba(255,255,255,.1) 50%,
+        rgba(180,255,255,.06) 60%, transparent);
+      animation: track 7s linear infinite;
+    }
+    .blink { animation: blink 1.2s infinite steps(1); }
+    @keyframes flicker { 0%,93%,100% { opacity: 1; } 94% { opacity: .7; } 95% { opacity: 1; } 97% { opacity: .82; } 98% { opacity: 1; } }
+    @keyframes slice { 0%,86%,100% { transform: translateX(0); opacity: 0; } 88% { transform: translateX(-9px); opacity: 1; } 91% { transform: translateX(7px); opacity: 1; } 94% { transform: translateX(0); opacity: 0; } }
+    @keyframes track { 0% { top: -32px; } 100% { top: 110%; } }
+    @keyframes blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: .25; } }
+  }
+</style>
+</head>
+<body>
+<div class="track" aria-hidden="true"></div>
+<span class="osd tl"><span class="blink">■</span> REC</span>
+<span class="osd tr">CH 404</span>
+<span class="osd bl">SP 0:00:00</span>
+<span class="osd br">MONO ◉</span>
+
+<main>
+  <div class="code" aria-hidden="true">404<span class="slice">404</span></div>
+  <h1 class="lost">SIGNAL LOST</h1>
+  <p class="sub">The page you tuned to is off the air. Adjust your antenna, or return to a channel that's broadcasting.</p>
+  <nav class="links" aria-label="Recovery">
+    <a href="/kube-headroom/">◀ BACK TO BROADCAST</a>
+    <a href="/kube-headroom/docs/">DOCS</a>
+  </nav>
+</main>
+</body>
+</html>

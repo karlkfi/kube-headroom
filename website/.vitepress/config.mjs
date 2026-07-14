@@ -36,12 +36,14 @@ export default defineConfig({
   ],
   themeConfig: {
     siteTitle: "KUBE-HEADROOM / DOCS",
+    // the navbar title returns to the landing page (used raw, not
+    // base-prefixed — same absolute path locally and on Pages)
+    logoLink: "/kube-headroom/",
     nav: [
       { text: "Design", link: "/design" },
       { text: "Runbook", link: "/runbook" },
       { text: "Tenant Guide", link: "/tenant-guide" },
       { text: "Applicability", link: "/applicability" },
-      { text: "Landing", link: "https://karlkfi.github.io/kube-headroom/" },
     ],
     sidebar: [
       {
