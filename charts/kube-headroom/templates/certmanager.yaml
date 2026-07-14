@@ -1,0 +1,54 @@
+{{- if .Values.certmanager.enable }}
+{{/*
+Self-signed issuer + serving certificates (cert-manager). The webhook cert is
+issued whenever the webhook is enabled; the metrics cert only when
+metrics.certManagerTLS is set. dnsNames resolve to the in-cluster Service DNS in
+the release namespace. Secret names (webhook-server-cert / metrics-server-cert)
+are kept literal so the manager's cert paths and the e2e suite find them.
+*/}}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-selfsigned-issuer
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+{{- if .Values.webhook.enable }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-serving-cert
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+spec:
+  dnsNames:
+    - {{ include "kube-headroom.fullname" . }}-webhook-service.{{ .Release.Namespace }}.svc
+    - {{ include "kube-headroom.fullname" . }}-webhook-service.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: {{ include "kube-headroom.fullname" . }}-selfsigned-issuer
+  secretName: webhook-server-cert
+{{- end }}
+{{- if .Values.metrics.certManagerTLS }}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-metrics-certs
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+spec:
+  dnsNames:
+    - {{ include "kube-headroom.fullname" . }}-controller-manager-metrics-service.{{ .Release.Namespace }}.svc
+    - {{ include "kube-headroom.fullname" . }}-controller-manager-metrics-service.{{ .Release.Namespace }}.svc.cluster.local
+  issuerRef:
+    kind: Issuer
+    name: {{ include "kube-headroom.fullname" . }}-selfsigned-issuer
+  secretName: metrics-server-cert
+{{- end }}
+{{- end }}

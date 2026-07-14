@@ -1,0 +1,23 @@
+apiVersion: v2
+name: kube-headroom-crds
+description: |
+  CustomResourceDefinitions for kube-headroom. Install this chart once per
+  cluster, ahead of (and on an independent lifecycle from) the namespaced
+  operator chart. The CRD carries helm.sh/resource-policy: keep, so a
+  `helm upgrade` rolls new schema versions while `helm uninstall` never drops
+  live HeadroomConfig objects.
+type: application
+# Chart version moves when the packaged schema changes; consumers pin this.
+version: 0.1.0
+# appVersion tracks the served API maturity. Q21 ships v1alpha1 only; a future
+# v1beta1 bump is an upgrade of THIS chart (see docs/plan/api-version-progression.md),
+# never a new chart.
+appVersion: v1alpha1
+home: https://github.com/karlkfi/kube-headroom
+sources:
+  - https://github.com/karlkfi/kube-headroom
+keywords:
+  - kube-headroom
+  - crd
+  - cpu
+  - autoscaling

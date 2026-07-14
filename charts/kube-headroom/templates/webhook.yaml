@@ -1,0 +1,56 @@
+{{- if .Values.webhook.enable }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-webhook-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 443
+      protocol: TCP
+      targetPort: 9443
+  selector:
+    {{- include "kube-headroom.selectorLabels" . | nindent 4 }}
+---
+{{/*
+MutatingWebhookConfiguration. The webhooks list (rules, path, failurePolicy,
+sideEffects, timeoutSeconds) is synced verbatim from the generated
+config/webhook/manifests.yaml via `make helm-sync`, so the controller-gen
+markers stay authoritative. The template overrides only the clientConfig
+service coordinates (name + release namespace), adds the §6.5 namespaceSelector
+(the manifests_patch.yaml behavior), and — when cert-manager is enabled — the
+inject-ca-from annotation.
+*/}}
+{{- $webhooks := (.Files.Get "files/webhook-manifests.yaml" | fromYaml).webhooks }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-mutating-webhook-configuration
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+  {{- if .Values.certmanager.enable }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "kube-headroom.fullname" . }}-serving-cert
+  {{- end }}
+webhooks:
+  {{- range $w := $webhooks }}
+  - name: {{ $w.name }}
+    admissionReviewVersions:
+      {{- toYaml $w.admissionReviewVersions | nindent 6 }}
+    clientConfig:
+      service:
+        name: {{ include "kube-headroom.fullname" $ }}-webhook-service
+        namespace: {{ $.Release.Namespace }}
+        path: {{ $w.clientConfig.service.path }}
+    failurePolicy: {{ $w.failurePolicy }}
+    sideEffects: {{ $w.sideEffects }}
+    timeoutSeconds: {{ $w.timeoutSeconds }}
+    namespaceSelector:
+      matchLabels:
+        {{ $.Values.webhook.namespaceSelector.key }}: {{ $.Values.webhook.namespaceSelector.value }}
+    rules:
+      {{- toYaml $w.rules | nindent 6 }}
+  {{- end }}
+{{- end }}

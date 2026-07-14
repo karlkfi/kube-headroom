@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "kube-headroom.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        {{- include "kube-headroom.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: {{ include "kube-headroom.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 10
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: manager
+          image: {{ include "kube-headroom.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /manager
+          args:
+            - --metrics-bind-address=:8443
+            - --health-probe-bind-address=:8081
+            {{- if .Values.leaderElection.enable }}
+            - --leader-elect
+            {{- end }}
+            {{- if and .Values.certmanager.enable .Values.metrics.certManagerTLS }}
+            - --metrics-cert-path=/tmp/k8s-metrics-server/metrics-certs
+            {{- end }}
+            {{- if .Values.webhook.enable }}
+            - --webhook-cert-path=/tmp/k8s-webhook-server/serving-certs
+            {{- end }}
+            {{- with .Values.extraArgs }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+            {{- if .Values.webhook.enable }}
+            - name: webhook-server
+              containerPort: 9443
+              protocol: TCP
+            {{- end }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - "ALL"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- if and .Values.certmanager.enable .Values.metrics.certManagerTLS }}
+            - name: metrics-certs
+              mountPath: /tmp/k8s-metrics-server/metrics-certs
+              readOnly: true
+            {{- end }}
+            {{- if .Values.webhook.enable }}
+            - name: webhook-certs
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+            {{- end }}
+      volumes:
+        {{- if and .Values.certmanager.enable .Values.metrics.certManagerTLS }}
+        - name: metrics-certs
+          secret:
+            secretName: metrics-server-cert
+            optional: false
+            items:
+              - key: ca.crt
+                path: ca.crt
+              - key: tls.crt
+                path: tls.crt
+              - key: tls.key
+                path: tls.key
+        {{- end }}
+        {{- if .Values.webhook.enable }}
+        - name: webhook-certs
+          secret:
+            secretName: webhook-server-cert
+        {{- end }}

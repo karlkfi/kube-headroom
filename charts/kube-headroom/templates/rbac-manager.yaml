@@ -1,0 +1,29 @@
+{{/*
+Manager ClusterRole. The `rules` are synced verbatim from the generated
+config/rbac/role.yaml (via `make helm-sync`) so the Q17 narrowing stays
+authoritative — never hand-widen them here. Only the name/labels are templated.
+*/}}
+{{- $role := .Files.Get "files/manager-role.yaml" | fromYaml -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-manager-role
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+rules:
+  {{- toYaml $role.rules | nindent 2 }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-manager-rolebinding
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kube-headroom.fullname" . }}-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kube-headroom.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

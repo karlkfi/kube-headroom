@@ -1,0 +1,26 @@
+kube-headroom operator {{ .Chart.AppVersion }} installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
+
+Image: {{ include "kube-headroom.image" . }}
+Replicas: {{ .Values.replicas }}
+Webhook: {{ if .Values.webhook.enable }}enabled{{ else }}disabled{{ end }} | cert-manager: {{ if .Values.certmanager.enable }}enabled{{ else }}disabled{{ end }} | Prometheus: {{ if .Values.prometheus.enable }}enabled{{ else }}disabled{{ end }} | NetworkPolicy: {{ if .Values.networkPolicy.enable }}enabled{{ else }}disabled{{ end }}
+
+{{- if not .Values.crds.install }}
+
+NOTE: this chart did not install the CRD (crds.install=false). Ensure the
+kube-headroom-crds chart is installed first:
+
+  helm upgrade --install kube-headroom-crds oci://ghcr.io/karlkfi/charts/kube-headroom-crds
+{{- end }}
+
+Manage a namespace with Headroom by labelling it:
+
+  kubectl label namespace <ns> {{ .Values.webhook.namespaceSelector.key }}={{ .Values.webhook.namespaceSelector.value }}
+
+{{- if not .Values.headroomConfig.create }}
+
+Then create the singleton HeadroomConfig (name: cluster). A starting point:
+
+  kubectl apply -f https://raw.githubusercontent.com/karlkfi/kube-headroom/main/config/samples/kube-headroom_v1alpha1_headroomconfig.yaml
+
+Or enable headroomConfig.create=true to have this chart render it.
+{{- end }}
