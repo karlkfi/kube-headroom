@@ -172,7 +172,7 @@ burst_i = max( S × request_i / M,  min(minBurstFloor, S / N) )
 limit_i = request_i + burst_i
 ```
 
-The floor is the *smaller* of a configured absolute floor (default `1000m`) and the equal share of *actual remaining slack*. On an empty node, a 10m pod gets `request + 1 core` — real, useful burst. On a nearly full node, the floor collapses to `S/N`, which collapses to ~0, preserving the proportional incentive exactly when it matters (under contention). Splitting pods to farm the floor is capped at `S` total, and only pays when slack is abundant and therefore cheap — acceptable.
+The floor is the *smaller* of a configured absolute floor (default `1000m`) and the equal share of *actual remaining slack*. On an empty node, a 200m pod gets `request + 1 core` (1200m) — real, useful burst. The one caveat is the §5.3 `maxMultiplier` cap (default 10×), which binds *before* the additive floor for very small requests: the full 1-core boost only lands once `request + 1 core ≤ request × maxMultiplier`, i.e. `request ≥ ~112m` at the default 10×. Below that the cap is the binding constraint — a 10m pod is clamped to `request × 10 = 100m`, not `request + 1 core`. On a nearly full node, the floor collapses to `S/N`, which collapses to ~0, preserving the proportional incentive exactly when it matters (under contention). Splitting pods to farm the floor is capped at `S` total, and only pays when slack is abundant and therefore cheap — acceptable.
 
 ### 5.3 Caps and clamps
 
