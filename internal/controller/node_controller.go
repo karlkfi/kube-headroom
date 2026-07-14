@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -89,6 +90,11 @@ type NodeReconciler struct {
 
 	// now is overridable in tests; defaults to time.Now.
 	now func() time.Time
+
+	// randFloat draws the enqueue jitter in [0,1); overridable in tests for
+	// deterministic timing. Defaults to math/rand/v2.Float64 (auto-seeded,
+	// concurrency-safe).
+	randFloat func() float64
 }
 
 // resolvedConfig is HeadroomConfig reduced to what a reconcile needs: the pure
@@ -554,11 +560,11 @@ func (r *NodeReconciler) setDebounce(d time.Duration) {
 	}
 }
 
-// enqueueDelay is the debounce the event handler applies to a node key. The
-// explicit struct override wins (test determinism); otherwise it reflects
+// baseEnqueueDelay is the un-jittered debounce for a node key. The explicit
+// struct override wins (test determinism); otherwise it reflects
 // spec.debouncePeriod as of the last reconcile, falling back to the default
-// until the first reconcile has published a value.
-func (r *NodeReconciler) enqueueDelay() time.Duration {
+// until the first reconcile has published a value. Always positive.
+func (r *NodeReconciler) baseEnqueueDelay() time.Duration {
 	if r.DebouncePeriod > 0 {
 		return r.DebouncePeriod
 	}
@@ -566,6 +572,30 @@ func (r *NodeReconciler) enqueueDelay() time.Duration {
 		return time.Duration(d)
 	}
 	return defaultDebouncePeriod
+}
+
+// enqueueDelay is the debounce the event handler applies to a node key, splayed
+// by up to ±50% so the reconcile wave desynchronizes (§8.6 "jittered initial
+// sync", §9.4.4 "all timing knobs jittered"). On a manager restart or leader
+// acquisition the informer LIST replays a Create for every existing pod, which
+// would otherwise enqueue every node at the same instant with the same fixed
+// debounce — a synchronized thundering herd. Jitter spreads it while preserving
+// the debounce's mean, so steady-state semantics are unchanged: a burst on one
+// node still collapses to a single recompute (the workqueue keeps the earliest
+// AddAfter per key).
+func (r *NodeReconciler) enqueueDelay() time.Duration {
+	base := r.baseEnqueueDelay()
+	// factor ∈ [-0.5, 0.5) → delay ∈ [base/2, 1.5*base).
+	return base + time.Duration((r.rand()-0.5)*float64(base))
+}
+
+// rand draws a jitter fraction in [0,1), from the injectable source in tests or
+// the auto-seeded math/rand/v2 global otherwise.
+func (r *NodeReconciler) rand() float64 {
+	if r.randFloat != nil {
+		return r.randFloat()
+	}
+	return rand.Float64()
 }
 
 func (r *NodeReconciler) backoffPeriod() time.Duration {
