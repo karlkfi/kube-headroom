@@ -486,6 +486,26 @@ func (r *NodeReconciler) refreshPodsManagedLocked() {
 	podsManaged.Set(float64(total))
 }
 
+// ManagedCounts reports the number of managed pods and the number of nodes with
+// at least one managed pod, read from the same per-node series that back the
+// podsManaged / nodeManagedPods gauges (§8.1). The HeadroomConfigReconciler
+// writes these into status, so the advertised status.managedPods and the
+// headroom_pods_managed metric agree by construction (Q26). syncPodMetrics prunes
+// a node's entry once it has no managed pods, so len(podSeries) is exactly the
+// managed-node count.
+func (r *NodeReconciler) ManagedCounts() (pods, nodes int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, s := range r.podSeries {
+		if len(s) == 0 {
+			continue
+		}
+		nodes++
+		pods += len(s)
+	}
+	return pods, nodes
+}
+
 // --- backoff state ----------------------------------------------------------
 
 func (r *NodeReconciler) inBackoff(pod *corev1.Pod) bool {
