@@ -14,7 +14,7 @@ const resolveLocal = (p) =>
 export default defineConfig({
   title: "Headroom",
   description:
-    "Dynamic CPU limits that float with node slack — recomputed on scheduling events, applied via in-place pod resize.",
+    "CPU limits that resize to share unrequested node capacity — recomputed on scheduling events, applied via in-place pod resize.",
   base: "/kube-headroom/docs/",
   srcDir: "../docs",
   outDir: "./.vitepress/dist",

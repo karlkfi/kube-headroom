@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Headroom — dynamic CPU limits that float with node slack</title>
-<meta name="description" content="A Kubernetes controller that sets container CPU limits from node slack — recomputed on scheduling events, applied via in-place pod resize. No restarts, no metrics pipeline, no oscillation.">
-<meta property="og:title" content="Headroom — dynamic CPU limits that float with node slack">
+<title>Headroom — CPU limits that resize to share unrequested capacity</title>
+<meta name="description" content="A Kubernetes controller that resizes container CPU limits to share each node's unrequested capacity — recomputed on scheduling events, applied via in-place pod resize. No restarts, no metrics pipeline, no oscillation.">
+<meta property="og:title" content="Headroom — CPU limits that resize to share unrequested capacity">
 <meta property="og:description" content="Your ceiling is your request — plus your share of everything the node isn't using. Requests-driven, CPU-only by design, safe by construction.">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary">
@@ -146,7 +146,7 @@
       <div>
         <p class="kicker">Now broadcasting on all nodes</p>
         <h1 class="wordmark"><span class="kube">KUBE&nbsp;·</span><span class="word">HEADROOM</span></h1>
-        <p class="tagline">Dynamic CPU limits that float with node slack — no restarts, no metrics pipeline, no oscillation.</p>
+        <p class="tagline">CPU limits that resize to share the node's unrequested capacity — no restarts, no metrics pipeline, no oscillation.</p>
         <p class="subline">RECOMPUTED ON SCHEDULING EVENTS · APPLIED VIA IN-PLACE POD RESIZE</p>
         <div class="install">
           <div class="install-step">
