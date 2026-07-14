@@ -65,7 +65,11 @@ def links_of(path: str):
 
 
 def main() -> int:
-    files = subprocess.check_output(["git", "ls-files", "*.md"], text=True).split()
+    # Exclude vendor/: it holds checked-in third-party Markdown (READMEs,
+    # CHANGELOGs) whose relative links we neither own nor can fix.
+    files = subprocess.check_output(
+        ["git", "ls-files", "*.md", ":(exclude)vendor/**"], text=True
+    ).split()
     anchor_cache: dict[str, set[str]] = {}
     errors: list[str] = []
 
