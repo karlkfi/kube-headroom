@@ -83,7 +83,7 @@ The scheme should make honest, adequate requests the dominant strategy:
 
 A natural question is whether this should grow into a unified resource controller (CPU + memory + GPU + ephemeral storage). It should not, for a mechanical reason: the safety invariant (§8.6 — "no failure mode worse than not running Headroom") exists *only* because CPU is compressible. Exceeding a CPU ceiling throttles; exceeding the others kills:
 
-- **Memory** limits are a ratchet, not a dial — raising is free, but shrinking below current usage is best-effort (kubelet skips the resize if usage exceeds the target) and the failure mode is an OOM kill. "Ceiling floats with node slack" is incoherent for a non-reclaimable resource.
+- **Memory** limits are a ratchet, not a dial — raising is free, but shrinking below current usage is best-effort (kubelet skips the resize if usage exceeds the target) and the failure mode is an OOM kill. "Limit tracks unused capacity" is incoherent for a non-reclaimable resource.
 - **GPU** has no runtime burst mechanism: devices bind at scheduling (device plugin / DRA); MIG/MPS are partitioning decisions, not dynamic quotas. Nothing to actuate.
 - **Ephemeral storage** enforces limits by *eviction* and is not in-place resizable at all (only CPU and memory are).
 
@@ -288,7 +288,7 @@ Design rule: **any observed throttling must be explainable in two kubectl comman
 
 ### 8.2 Tenant-facing contract (one paragraph users must understand)
 
-"Your CPU request is guaranteed. Your CPU limit floats between your request and your request plus your proportional share of the node's unbooked CPU. If you need more sustained CPU, request more. Your limit shrinking is not an incident; it means the node got busier, and you still have everything you requested."
+"Your CPU request is guaranteed. Your CPU limit is your request plus a fair share of whatever CPU the node hasn't promised to anyone else — high on a quiet node, back to your request on a full one. If you need more sustained CPU, request more. Your limit shrinking is not an incident; it means the node got busier, and you still have everything you requested."
 
 ### 8.3 Interactions with other systems
 

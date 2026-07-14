@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your pod just got more headroom — Headroom for app teams</title>
+<meta name="description" content="Someone enrolled your namespace in Headroom. The contract: your CPU request is guaranteed, your limit is your request plus a fair share of the node's unused CPU, and a shrinking limit is not an incident.">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<!-- "Saturday Morning" — the design system's daylight register for pages app
+     teams get sent to. Self-contained styles: this page deliberately runs a
+     different (light, Memphis) palette than the broadcast-dark landing. -->
+<style>
+  :root {
+    --cream: #f6f1e4;
+    --ink: #23202b;
+    --ink-soft: #4d4759;
+    --ink-faint: #6b6478;
+    --teal: #14a89b;
+    --teal-deep: #0d7f75;
+    --purple: #5b3a8e;
+    --coral: #ff7059;
+    --sun: #ffc233;
+    --pink: #ff2d95;
+    --mono: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --display: "Arial Black", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--cream);
+    color: var(--ink-soft);
+    font-family: var(--sans);
+    line-height: 1.6;
+    font-size: 16px;
+    overflow-x: hidden;
+  }
+  a { color: var(--teal-deep); }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+  .wrap { max-width: 1020px; margin: 0 auto; padding: 0 24px; }
+  code {
+    font-family: var(--mono);
+    font-size: .9em;
+    background: #fff;
+    border: 1.5px solid var(--ink);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--ink);
+  }
+  pre {
+    background: #fff;
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    box-shadow: 4px 4px 0 var(--sun);
+    padding: 14px 18px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--ink);
+  }
+  pre code { background: none; border: 0; padding: 0; }
+
+  /* ============ NAV ============ */
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px 24px;
+    padding: 18px 24px;
+    border-bottom: 3px solid var(--ink);
+    background: var(--cream);
+    position: relative;
+    z-index: 3;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--display);
+    font-size: 15px;
+    letter-spacing: 1px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .brand .tag { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--ink-faint); }
+  .nav-links {
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 22px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 1.5px;
+  }
+  .nav-links a { color: var(--ink-faint); text-decoration: none; }
+  .nav-links a:hover { color: var(--teal-deep); }
+
+  /* ============ HERO ============ */
+  .hero { position: relative; overflow: hidden; padding: 72px 0 56px; }
+  .day-art { position: absolute; z-index: 1; pointer-events: none; }
+  .hero .wrap { position: relative; z-index: 2; }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: var(--purple);
+    text-transform: uppercase;
+  }
+  h1 {
+    font-family: var(--display);
+    font-size: clamp(34px, 5.5vw, 54px);
+    line-height: 1.02;
+    letter-spacing: -0.5px;
+    color: var(--ink);
+    margin: 14px 0 0;
+    text-wrap: balance;
+  }
+  h1 .swash { color: var(--teal); font-style: italic; }
+  .lede { font-size: 17px; max-width: 56ch; margin: 20px 0 0; }
+
+  /* ============ CARDS ============ */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+    margin-top: 40px;
+  }
+  @media (max-width: 800px) { .cards { grid-template-columns: 1fr; } }
+  .card {
+    background: #fff;
+    border: 2px solid var(--ink);
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .card:nth-child(1) { box-shadow: 5px 5px 0 var(--teal); }
+  .card:nth-child(2) { box-shadow: 5px 5px 0 var(--purple); }
+  .card:nth-child(3) { box-shadow: 5px 5px 0 var(--coral); }
+  .card h3 { margin: 0 0 6px; font-family: var(--display); font-size: 15.5px; color: var(--ink); letter-spacing: .3px; }
+  .card p { margin: 0; font-size: 14px; }
+
+  /* ============ SECTIONS ============ */
+  section { padding: 56px 0; }
+  h2 {
+    font-family: var(--display);
+    color: var(--ink);
+    font-size: clamp(22px, 3vw, 30px);
+    letter-spacing: -0.3px;
+    margin: 0 0 16px;
+    text-wrap: balance;
+  }
+  .contract {
+    background: #fff;
+    border: 2px solid var(--ink);
+    border-radius: 12px;
+    box-shadow: 6px 6px 0 var(--teal);
+    padding: 26px 30px;
+    max-width: 760px;
+    font-size: 16.5px;
+    color: var(--ink-soft);
+  }
+  .contract strong { color: var(--ink); }
+  .contract .amberline { color: var(--teal-deep); font-weight: 600; }
+
+  .howto {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 22px;
+  }
+  @media (max-width: 860px) { .howto { grid-template-columns: 1fr; } }
+  .howto-item h3 {
+    font-family: var(--display);
+    font-size: 16px;
+    color: var(--ink);
+    margin: 0 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .howto-item h3 .dot { width: 12px; height: 12px; border-radius: 3px; flex-shrink: 0; transform: rotate(8deg); }
+  .howto-item p { margin: 0 0 10px; font-size: 14.5px; }
+
+  .cta-row { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+  .cta {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 1.5px;
+    text-decoration: none;
+    color: var(--ink);
+    background: var(--sun);
+    border: 2px solid var(--ink);
+    border-radius: 8px;
+    padding: 11px 20px;
+    box-shadow: 4px 4px 0 var(--ink);
+  }
+  .cta.alt { background: #fff; }
+  .cta:hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 var(--ink); }
+  @media (prefers-reduced-motion: reduce) { .cta:hover { transform: none; } }
+
+  footer {
+    border-top: 3px solid var(--ink);
+    margin-top: 24px;
+    padding: 30px 0 44px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    color: var(--ink-faint);
+  }
+  footer .wrap { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+</style>
+</head>
+<body>
+
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="./">
+    <svg width="24" height="24" viewBox="0 0 100 100" aria-hidden="true"><line x1="14" y1="16" x2="86" y2="16" stroke="#5b3a8e" stroke-width="5" stroke-dasharray="8 7"/><rect x="20" y="44" width="20" height="42" fill="#14a89b"/><rect x="58" y="36" width="20" height="50" fill="#14a89b"/><rect x="58" y="24" width="20" height="8" fill="#14a89b" opacity=".85"/><rect x="20" y="55" width="58" height="14" fill="#14a89b"/></svg>
+    KUBE-HEADROOM <span class="tag">/ APP TEAMS</span>
+  </a>
+  <div class="nav-links">
+    <a href="./">HOME</a>
+    <a href="docs/">DOCS</a>
+    <a href="docs/tenant-guide.html">FULL GUIDE</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <svg class="day-art" style="right:-40px; top:10px; width:420px; height:340px" viewBox="0 0 420 340" aria-hidden="true">
+    <path d="M40 240 C 90 150, 150 120, 230 140 C 300 158, 340 130, 396 60 L 420 90 C 370 170, 300 210, 220 196 C 150 184, 100 210, 70 270 Z" fill="#14a89b" opacity=".85"/>
+    <path d="M60 300 C 110 220, 170 196, 250 214 C 316 228, 356 204, 410 140" fill="none" stroke="#0d7f75" stroke-width="10" stroke-linecap="round" opacity=".5"/>
+    <path d="M80 70 L 130 40 L 110 90 L 165 62 L 145 112 L 200 84" fill="none" stroke="#5b3a8e" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M250 296 q 18 -26 36 0 q 18 26 36 0 q 18 -26 36 0" fill="none" stroke="#ff7059" stroke-width="9" stroke-linecap="round"/>
+    <polygon points="352,240 388,296 316,296" fill="none" stroke="#ffc233" stroke-width="8" stroke-linejoin="round" transform="rotate(-12 352 268)"/>
+    <circle cx="330" cy="200" r="9" fill="#ff2d95"/>
+    <circle cx="60" cy="150" r="6" fill="#5b3a8e"/>
+    <circle cx="252" cy="60" r="5" fill="#ff7059"/>
+    <rect x="290" y="30" width="16" height="16" fill="#ffc233" transform="rotate(20 298 38)"/>
+  </svg>
+
+  <div class="wrap">
+    <p class="kicker">For app teams · someone enrolled your namespace</p>
+    <h1>Your pod just got<br><span class="swash">more headroom.</span></h1>
+    <p class="lede">Headroom now manages your containers' CPU <em>limits</em> — and only the limits. Here's the contract, what you'll see, and the one caveat worth knowing about.</p>
+
+    <div class="cards">
+      <div class="card">
+        <h3>What changed</h3>
+        <p>Your CPU limit is no longer a fixed number. It's your request, plus a fair share of whatever CPU the node hasn't promised to anyone else. Empty node: big limit. Busy node: your request.</p>
+      </div>
+      <div class="card">
+        <h3>What never changes</h3>
+        <p>Your requests, your memory, your scheduling, your bill. Headroom only ever writes <code>limits.cpu</code> — live, via in-place resize, no restarts.</p>
+      </div>
+      <div class="card">
+        <h3>A shrinking limit is normal</h3>
+        <p>It means the node got busier — not an incident. You still have everything you requested, guaranteed by the scheduler and the kernel.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section>
+    <div class="wrap">
+      <h2>The whole model, one paragraph</h2>
+      <div class="contract">
+        <p><strong>Your CPU request is guaranteed.</strong> Your CPU limit is your request plus a fair share of whatever CPU the node hasn't promised to anyone else — high on a quiet node, settling back to your request as the node fills. <span class="amberline">If you need more sustained CPU, raise your request</span> — it buys guaranteed capacity, a bigger kernel share under contention, <em>and</em> a bigger slice of the node's unused CPU, all at once. There is no way to get sustained large CPU by requesting little.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>The practical bits</h2>
+      <div class="howto">
+        <div class="howto-item">
+          <h3><span class="dot" style="background:var(--teal)"></span>See why your ceiling is what it is</h3>
+          <p>The pod spec is the source of truth — <code>kubectl get pod</code> shows the enforced limit, a status annotation explains it, and every change emits a <code>CPULimitAdjusted</code> event.</p>
+          <pre><code>kubectl get pod &lt;pod&gt; -o jsonpath=\
+'{.metadata.annotations.kube-headroom\.dev/status}' | jq</code></pre>
+        </div>
+        <div class="howto-item">
+          <h3><span class="dot" style="background:var(--purple)"></span>Opt a pod out</h3>
+          <p>Enrollment is per namespace; excluding one workload is a pod-template label. Guaranteed and BestEffort pods are never managed regardless.</p>
+          <pre><code>metadata:
+  labels:
+    kube-headroom.dev/mode: unmanaged</code></pre>
+        </div>
+        <div class="howto-item">
+          <h3><span class="dot" style="background:var(--sun)"></span>Cap your own ceiling</h3>
+          <p>Pinned parallelism (a <code>GOMAXPROCS</code>-sized service, say)? Tell Headroom never to raise you above it.</p>
+          <pre><code>metadata:
+  annotations:
+    kube-headroom.dev/max-cpu: "4"</code></pre>
+        </div>
+        <div class="howto-item">
+          <h3><span class="dot" style="background:var(--coral)"></span>The one real caveat</h3>
+          <p>Many runtimes size thread pools from a CPU count <em>at boot</em> and never re-read it — a live-raised ceiling won't grow a boot-sized pool. Set your parallelism explicitly, or accept birth-limit sizing. The <a href="docs/cpu-footguns.html">CPU footguns catalog</a> covers JVM, Go, Python, Node, .NET, Rust, and the ML/GPU stacks, with workarounds for each.</p>
+        </div>
+      </div>
+      <p style="font-size:14.5px; max-width:70ch">Running VPA? The two compose cleanly — VPA owns requests, Headroom owns limits — as long as VPA is set to <code>controlledValues: RequestsOnly</code>. Using HPA? Structurally unaffected, but unthrottled pods reveal true demand, so review your thresholds. Recipes for both are in the full guide.</p>
+      <div class="cta-row">
+        <a class="cta" href="docs/tenant-guide.html">READ THE FULL GUIDE</a>
+        <a class="cta alt" href="docs/applicability.html">IS MY WORKLOAD A FIT?</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <svg width="16" height="16" viewBox="0 0 100 100" aria-hidden="true"><line x1="14" y1="16" x2="86" y2="16" stroke="#5b3a8e" stroke-width="6" stroke-dasharray="9 8"/><rect x="20" y="44" width="20" height="42" fill="#14a89b"/><rect x="58" y="36" width="20" height="50" fill="#14a89b"/><rect x="58" y="24" width="20" height="8" fill="#14a89b" opacity=".85"/><rect x="20" y="55" width="58" height="14" fill="#14a89b"/></svg>
+    KUBE-HEADROOM · SATURDAY MORNING PROGRAMMING · YOUR REQUEST IS GUARANTEED
+  </div>
+</footer>
+</body>
+</html>
