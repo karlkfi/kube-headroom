@@ -293,6 +293,16 @@ are safe.
   convergent patches.
 - **Thundering herd on restart:** the initial reconcile finds most limits
   already within deadband, so few patches fire; initial sync is jittered.
+- **Backoff after a restart/failover:** the per-pod backoff window is in-memory,
+  so a restart, rollout, or leader change starts with it empty. A pod still
+  showing an `Infeasible` resize re-enters backoff from its own status on its
+  first reconcile — no retry patch is issued, though its one-time `Infeasible`
+  warning event and `result="infeasible"` increment reappear. The `quota-denied`
+  case is *not* re-derivable from pod status, so a quota-blocked pod re-issues its
+  resize once (one `403`, one `quota-denied` increment, one `ResizeForbidden`
+  event) before backing off again. A brief `quota-denied` blip right after a
+  manager restart is therefore expected; a *sustained* count still means a
+  namespace violates the `requests.cpu`-only preflight (fix the quota, above).
 
 When in doubt, `dryRun: true` is the safe stop button — it never removes a limit,
 it only stops changing them.
