@@ -53,6 +53,12 @@ extraEnv: []
 leaderElection:
   enable: true
 
+rbac:
+  # Render the CRD admin/editor/viewer helper ClusterRoles. Not used by the
+  # operator itself — they let a cluster admin delegate HeadroomConfig access to
+  # users. Matches the kustomize default.
+  aggregationRoles: true
+
 # PodDisruptionBudget keeping >=1 webhook-serving replica up during voluntary
 # disruptions. Only meaningful with replicas >= 2.
 podDisruptionBudget:
