@@ -59,7 +59,10 @@ export default defineConfig({
       },
       {
         text: "App teams",
-        items: [{ text: "Tenant guide", link: "/tenant-guide" }],
+        items: [
+          { text: "Tenant guide", link: "/tenant-guide" },
+          { text: "CPU footguns", link: "/cpu-footguns" },
+        ],
       },
       {
         text: "Adoption",
