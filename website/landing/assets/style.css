@@ -520,6 +520,7 @@ html.fx .horizon .halo { display: none; }
 .step p { margin: 0; font-size: 14px; color: var(--muted); }
 
 /* ============ STATUS ============ */
+.status { padding-top: 0; }
 .status .card {
   border: 1px solid rgba(255,210,63,.3);
   border-radius: 12px;

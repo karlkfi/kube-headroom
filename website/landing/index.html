@@ -254,8 +254,8 @@
           <ul>
             <li><strong>Hostile or contractual multi-tenancy</strong> — tenants who must not degrade each other, or SLAs you have to bound.</li>
             <li><strong>Blast-radius bounds</strong> — a hard ceiling caps what a runaway spin loop can take from its neighbors.</li>
-            <li><strong>Self-service QoS tiers</strong> — a tenant's CPU request becomes their service tier: a guaranteed floor, plus a predictable ceiling to plan against. Continuously sized by the tenant — not a menu of fixed shapes.</li>
-            <li><strong>Tenants fresh off VMs</strong> — workloads that size worker pools from the CPUs they see, and <code>nproc</code> reports the whole node, not their share. Point the Downward API at <code>limits.cpu</code> and Headroom makes that a real, meaningful number — otherwise the lie stays invisible until bin-packing lands them on a crowded node.</li>
+            <li><strong>Self-service QoS tiers</strong> — a tenant's CPU request becomes their service tier: guaranteed floor, predictable ceiling. Continuously sized, not a menu of fixed shapes.</li>
+            <li><strong>Tenants fresh off VMs</strong> — workloads that size thread pools from visible CPUs, and <code>nproc</code> reports the whole node. Point the Downward API at <code>limits.cpu</code>; Headroom makes that number real before bin-packing exposes the lie.</li>
             <li><strong>CI &amp; batch on shared nodes</strong> — compile bursts on idle nodes are the showcase case.</li>
           </ul>
         </div>
