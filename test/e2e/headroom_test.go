@@ -31,6 +31,9 @@ const (
 
 	probePod    = "headroom-probe"
 	neighborPod = "headroom-neighbor"
+	// birthJob is a short-lived Job whose single pod exercises the mutating
+	// webhook's birth-limit seeding through the real apiserver admission path.
+	birthJob = "headroom-birth"
 	// pause holds a pod Running with a fixed, near-zero CPU footprint; the probe's
 	// limit is a pure function of its request and node slack, not its usage (§5.5).
 	pauseImage = "registry.k8s.io/pause:3.10"
@@ -40,6 +43,12 @@ const (
 	probeRequestMilli    = 100
 	generousLimitMilli   = probeRequestMilli * 10 // 1000m — request x maxMultiplier
 	controllerDeployment = "kube-headroom-controller-manager"
+
+	// initialMultiplier mirrors webhook.initialMultiplier in the e2e HeadroomConfig
+	// (testdata/headroomconfig.yaml). The webhook seeds an absent CPU limit as
+	// request × this at admission (§6.5), so the birth limit is deterministic.
+	initialMultiplier = 2
+	birthLimitMilli   = probeRequestMilli * initialMultiplier // 200m — request × initialMultiplier
 )
 
 // headroomSpecs registers the Headroom exit-criteria scenarios. It is invoked
@@ -80,7 +89,8 @@ func headroomSpecs() {
 		})
 
 		AfterAll(func() {
-			By("removing the probe, neighbor, namespace, and config")
+			By("removing the probe, neighbor, birth Job, namespace, and config")
+			_, _ = kubectl("delete", "job", birthJob, "-n", managedNamespace, "--ignore-not-found", "--wait=false")
 			_, _ = kubectl("delete", "pod", neighborPod, "-n", neighborNamespace, "--ignore-not-found")
 			_, _ = kubectl("delete", "ns", managedNamespace, "--ignore-not-found", "--wait=false")
 			_, _ = kubectl("delete", "headroomconfig", "cluster", "--ignore-not-found")
@@ -122,6 +132,52 @@ func headroomSpecs() {
 			// jitter does not flake the run, while the reported latency tracks the SLO.
 			Expect(elapsed).To(BeNumerically("<", 20*time.Second),
 				"shrink should land well inside the 5s design SLO with margin")
+		})
+
+		// Criterion 3 (webhook, §6.5 + §10): a short-lived Job in a managed
+		// namespace is born with a boosted CPU limit at admission —
+		// request × initialMultiplier — seeded by the mutating webhook through the
+		// real apiserver admission path, before any controller reconcile. This is
+		// the load-bearing use case for short-lived pods (CI, batch) the reconcile
+		// loop may never reach in time, and the only case that exercises the
+		// MutatingWebhookConfiguration + cert wiring end-to-end.
+		//
+		// The Job's pod is pinned to a node selector no node carries, so it is
+		// admitted (the webhook fires) but never scheduled. The controller enqueues
+		// only pods with a bound spec.nodeName, so it never reconciles this pod —
+		// making the observed limit unambiguously the webhook's birth value rather
+		// than a post-bind correction, with no race to lose.
+		//
+		// PENDING: this case is the first to exercise the webhook through the real
+		// apiserver admission path, and it surfaced a wiring bug — the deployed
+		// MutatingWebhookConfiguration routes CREATE to /mutate-core-v1-pod while
+		// controller-runtime serves the core Pod webhook at /mutate--v1-pod, so the
+		// apiserver 404s and (failurePolicy: Ignore) admits the pod unseeded. It is
+		// marked PIt until the path-alignment fix lands; flip PIt→It in that same
+		// change to activate it (verified green locally with the fix applied).
+		PIt("seeds a Job pod's birth CPU limit at admission via the webhook", func() {
+			By("creating a short-lived Job whose pod is admitted but cannot schedule")
+			applyBirthJob(birthJob, managedNamespace, probeRequestMilli)
+
+			By("waiting for the webhook-admitted Job pod to appear")
+			var birthPod string
+			Eventually(func(g Gomega) {
+				birthPod = jobPodName(g, managedNamespace, birthJob)
+				g.Expect(birthPod).NotTo(BeEmpty(), "the Job should have created a pod")
+			}).WithTimeout(60 * time.Second).WithPolling(time.Second).Should(Succeed())
+
+			By("asserting the webhook seeded spec limits.cpu = request × initialMultiplier at CREATE")
+			Eventually(func(g Gomega) {
+				g.Expect(specContainerLimitMilli(g, managedNamespace, birthPod)).
+					To(Equal(int64(birthLimitMilli)))
+			}).WithTimeout(30 * time.Second).WithPolling(500 * time.Millisecond).Should(Succeed())
+
+			By("confirming the birth limit is stable — the unscheduled pod is never reconciled")
+			Consistently(func(g Gomega) {
+				g.Expect(specContainerLimitMilli(g, managedNamespace, birthPod)).
+					To(Equal(int64(birthLimitMilli)), "an unscheduled pod's limit must stay the webhook's birth value")
+				g.Expect(podPhase(g, managedNamespace, birthPod)).To(Equal("Pending"))
+			}).WithTimeout(10 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 		})
 
 		// Criterion 4: no resize churn once node slack stops changing. (Ordered
@@ -204,6 +260,67 @@ spec:
 	cmd.Stdin = strings.NewReader(manifest)
 	_, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "failed to apply pod %s/%s", ns, name)
+}
+
+// applyBirthJob creates a short-lived Job whose single pod carries a CPU request
+// and no CPU limit — the shape the webhook seeds. The pod template pins an
+// unsatisfiable nodeSelector so the pod is admitted (the webhook mutates it) but
+// never scheduled, isolating the birth limit from any controller reconcile. The
+// container command is a 20s sleep matching the §10 "20-second Job" criterion,
+// though the pod never runs it.
+func applyBirthJob(name, ns string, requestMilli int64) {
+	manifest := fmt.Sprintf(`apiVersion: batch/v1
+kind: Job
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: %s
+    spec:
+      # A label no node carries: the pod is admitted (webhook fires) but stays
+      # Pending, so the node reconciler — which keys off spec.nodeName — never
+      # touches it.
+      nodeSelector:
+        kube-headroom.dev/e2e-unschedulable: "true"
+      restartPolicy: Never
+      terminationGracePeriodSeconds: 1
+      containers:
+        - name: work
+          image: %s
+          command: ["sleep", "20"]
+          resources:
+            requests:
+              cpu: "%dm"
+`, name, ns, name, pauseImage, requestMilli)
+
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(manifest)
+	_, err := utils.Run(cmd)
+	Expect(err).NotTo(HaveOccurred(), "failed to apply job %s/%s", ns, name)
+}
+
+// jobPodName returns the name of the (single) pod a Job created, selected by the
+// job-name label. Empty until the Job controller has created the pod.
+func jobPodName(g Gomega, ns, job string) string {
+	out, err := kubectl("get", "pods", "-n", ns, "-l", "job-name="+job,
+		"-o", "jsonpath={.items[0].metadata.name}")
+	g.Expect(err).NotTo(HaveOccurred())
+	return strings.TrimSpace(out)
+}
+
+// specContainerLimitMilli reads a pod's first container CPU limit in millicores
+// from the pod spec (0 when unset). Unlike containerLimitMilli this reads spec,
+// not status: an unscheduled pod has no containerStatuses, and the webhook's
+// birth limit lives in spec.containers[].resources.limits.
+func specContainerLimitMilli(g Gomega, ns, name string) int64 {
+	out, err := kubectl("get", "pod", name, "-n", ns,
+		"-o", "jsonpath={.spec.containers[0].resources.limits.cpu}")
+	g.Expect(err).NotTo(HaveOccurred())
+	return cpuMilli(g, out)
 }
 
 // workerNodeName returns the name of a node without the control-plane role.
