@@ -22,7 +22,7 @@ keywords:
   - in-place-resize
 # The CRD ships as its OWN chart (kube-headroom-crds), which admins normally
 # install separately — cluster-wide, on a lifecycle independent of this
-# namespaced operator (see docs/plan/kustomize-helm-migration.md). This chart is
+# namespaced operator (see docs/plan/archive/kustomize-helm-migration.md). This chart is
 # therefore NOT wired to it as a Helm subchart dependency. For a one-shot
 # install that also lays down the CRD, set crds.install=true: the operator chart
 # then renders the same generated CRD in-place (templates/crd.yaml, synced by
