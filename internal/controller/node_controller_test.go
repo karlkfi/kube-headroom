@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -119,6 +120,30 @@ func makeOwnedBurstablePod(ns, name, node string, reqMilli int64, owner metav1.O
 		Spec:       corev1.PodSpec{Containers: []corev1.Container{c}, NodeName: node},
 	}
 	Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+}
+
+// setPodResizeInfeasible stamps the pod's status with the PodResizePending /
+// Infeasible condition the kubelet raises when it refuses a resize (§6.4), via a
+// status update so the reconciler's live List reads it back. There is no kubelet
+// in envtest, so the condition is synthesized rather than observed.
+func setPodResizeInfeasible(ns, name string) {
+	var pod corev1.Pod
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, &pod)).To(Succeed())
+	pod.Status.Conditions = append(pod.Status.Conditions, corev1.PodCondition{
+		Type:   corev1.PodResizePending,
+		Status: corev1.ConditionTrue,
+		Reason: corev1.PodReasonInfeasible,
+	})
+	Expect(k8sClient.Status().Update(ctx, &pod)).To(Succeed())
+}
+
+// clearPodConditions drops the pod's status conditions so a post-expiry retry is
+// not immediately re-backed-off by a lingering Infeasible condition.
+func clearPodConditions(ns, name string) {
+	var pod corev1.Pod
+	Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: ns, Name: name}, &pod)).To(Succeed())
+	pod.Status.Conditions = nil
+	Expect(k8sClient.Status().Update(ctx, &pod)).To(Succeed())
 }
 
 func podLimitMilli(ns, name string) int64 {
@@ -594,5 +619,68 @@ var _ = Describe("NodeReconciler", func() {
 
 		Expect(testutil.ToFloat64(resizesTotal.WithLabelValues(resultDryRun))).To(BeNumerically(">", beforeDry))
 		Expect(testutil.ToFloat64(resizesTotal.WithLabelValues(resultApplied))).To(Equal(beforeApplied))
+	})
+
+	It("backs off and excludes a managed pod the kubelet marks Infeasible (§6.4)", func() {
+		rec := events.NewFakeRecorder(16)
+		r.Recorder = rec
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(nsA, "infeasible", node, 1000, 0)
+		// The kubelet refuses the pending resize: stamp the Infeasible condition the
+		// reconciler keys off in buildInputs.
+		setPodResizeInfeasible(nsA, "infeasible")
+
+		before := testutil.ToFloat64(resizesTotal.WithLabelValues(resultInfeasible))
+
+		// First reconcile: the pod is still managed this pass, so the Infeasible
+		// branch fires once — counter, warning event, and a backoff window.
+		reconcileNode(node)
+
+		Expect(testutil.ToFloat64(resizesTotal.WithLabelValues(resultInfeasible))).To(BeNumerically(">", before))
+		Eventually(rec.Events).Should(Receive(And(
+			ContainSubstring(reasonResizeInfeasible),
+			ContainSubstring("infeasible"),
+		)))
+
+		// The default 60s backoff outlives this spec, so the next reconcile drops the
+		// pod from management (contributes slack only): its money-graph series is gone.
+		reconcileNode(node)
+		_, ok := podLimitSeries("infeasible")
+		Expect(ok).To(BeFalse(), "backed-off pod must be excluded from management")
+	})
+
+	It("re-manages a pod once the backoff window expires (clock-driven)", func() {
+		// Freeze the injectable clock so backoff expiry is deterministic rather than
+		// wall-clock-dependent.
+		nowVal := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		r.now = func() time.Time { return nowVal }
+		r.BackoffPeriod = 30 * time.Second
+
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(nsA, "expires", node, 1000, 0)
+		setPodResizeInfeasible(nsA, "expires")
+
+		// Detect Infeasible and arm a backoff expiring at base + 30s. Then clear the
+		// condition so the post-expiry retry is judged on its own merits.
+		reconcileNode(node)
+		clearPodConditions(nsA, "expires")
+
+		// Still inside the window: the pod stays excluded, series reclaimed.
+		reconcileNode(node)
+		_, ok := podLimitSeries("expires")
+		Expect(ok).To(BeFalse(), "pod must remain excluded before the window expires")
+
+		// Advance the clock past the window: inBackoff lapses and the pod is
+		// re-managed, so its target series reappears.
+		nowVal = nowVal.Add(31 * time.Second)
+		reconcileNode(node)
+		_, ok = podLimitSeries("expires")
+		Expect(ok).To(BeTrue(), "pod must be re-managed after the backoff window expires")
 	})
 })
