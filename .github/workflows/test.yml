@@ -1,10 +1,23 @@
 name: Tests
 
+# Markdown/docs edits can't change the envtest suite outcome, so skip when the
+# diff is docs-only. paths-ignore skips only when every changed file matches, so
+# a mixed code+docs PR still runs the tests.
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions: {}
 

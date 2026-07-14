@@ -1,10 +1,27 @@
 name: E2E Tests
 
+# Docs-only changes can't affect the manager image or the kind e2e run, so skip
+# this (the heaviest gate) when nothing but Markdown/docs changed. paths-ignore
+# only skips when *every* changed file matches, so a mixed code+docs PR still
+# runs. There are no required status checks on this repo, so a skipped workflow
+# doesn't block the PR.
 on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
   pull_request:
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+# Cancel superseded runs on the same PR; pushes to main each get their own group
+# so a post-merge gate is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions: {}
 
