@@ -59,10 +59,6 @@
         <stop offset="0%" stop-color="#ff2d95" stop-opacity=".08"/>
         <stop offset="100%" stop-color="#ff2d95" stop-opacity=".95"/>
       </linearGradient>
-      <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
-        <feGaussianBlur stdDeviation="3" result="b"/>
-        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
     </defs>
     <rect x="0" y="0" width="1200" height="150" fill="url(#sky)"/>
     <g fill="#bcd2ff" opacity=".55">
@@ -90,12 +86,17 @@
       <polygon points="597.5,226 602.5,226 604,248 596,248"/>
       <polygon points="596,266 604,266 606,294 594,294"/>
     </g>
-    <g filter="url(#glow)">
+    <!-- light trails: wide low-opacity halo behind a bright core (no SVG
+         filters anywhere in this scene — feGaussianBlur re-rasterizes on
+         scroll and was the main source of jank) -->
+    <g>
+      <polygon points="584,150 602,150 416,300 336,300" fill="url(#trailc)" opacity=".3"/>
+      <polygon points="598,150 616,150 864,300 784,300" fill="url(#trailm)" opacity=".3"/>
       <polygon points="590,150 596,150 396,300 356,300" fill="url(#trailc)"/>
       <polygon points="604,150 610,150 844,300 804,300" fill="url(#trailm)"/>
     </g>
-    <g fill="none" stroke-linecap="round" filter="url(#glow)">
-      <g stroke="#22e6ff" opacity=".5">
+    <g fill="none" stroke-linecap="round">
+      <g stroke="#22e6ff" opacity=".6">
         <path d="M168 300 C160 240 152 170 150 100" stroke-width="10"/>
         <g stroke-width="6">
           <path d="M150 98 Q118 78 84 86"/><path d="M150 98 Q120 60 92 52"/>
@@ -110,7 +111,7 @@
           <path d="M246 184 Q272 158 296 156"/><path d="M246 184 Q276 176 300 188"/>
         </g>
       </g>
-      <g stroke="#ff2d95" opacity=".5">
+      <g stroke="#ff2d95" opacity=".6">
         <path d="M1022 300 C1016 244 1008 180 1000 124" stroke-width="9"/>
         <g stroke-width="5.5">
           <path d="M1000 122 Q968 104 934 112"/><path d="M1000 122 Q972 84 942 78"/>
@@ -120,12 +121,16 @@
         </g>
       </g>
     </g>
-    <circle class="pulse" r="3.5" fill="#eaffff" filter="url(#glow)">
-      <animateMotion dur="2.6s" repeatCount="indefinite" path="M593,152 L376,298"/>
-    </circle>
-    <circle class="pulse" r="3.5" fill="#ffd7ec" filter="url(#glow)">
-      <animateMotion dur="3.4s" begin="1.2s" repeatCount="indefinite" path="M607,152 L824,298"/>
-    </circle>
+    <!-- pulses ride the (straight) trails via CSS transform keyframes:
+         GPU-composited, unlike SMIL animateMotion which repaints per frame -->
+    <g class="pulse pulse-a">
+      <circle r="8" fill="#22e6ff" opacity=".22"/>
+      <circle r="3.2" fill="#eaffff"/>
+    </g>
+    <g class="pulse pulse-b">
+      <circle r="8" fill="#ff2d95" opacity=".22"/>
+      <circle r="3.2" fill="#ffd7ec"/>
+    </g>
   </svg>
 
   <div class="wrap">
