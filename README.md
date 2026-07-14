@@ -57,9 +57,9 @@ source of truth — `kubectl get pod` shows the actually-enforced limit.
 - **Safe by construction** — if the controller stops, limits freeze at their
   last values; `cpu.weight` still enforces fair sharing. *No failure mode is
   worse than not running Headroom.*
-- **CPU-only, by design** — CPU is compressible (exceeding the ceiling
-  throttles); memory/GPU/storage are not (they kill), so the "ceiling tracks
-  slack" model only makes sense for CPU.
+- **CPU-only, by design** — CPU is compressible (exceeding the limit
+  throttles); memory/GPU/storage are not (they kill), so the "limit tracks
+  unused capacity" model only makes sense for CPU.
 - **Opt-in per namespace**, safe to run alongside unmanaged workloads.
 - **Debuggable** — every limit change is explainable from observable inputs
   (annotation + event + metrics).

@@ -175,7 +175,7 @@
         <div class="widget-head">
           <span class="live">■ LIVE</span><span>ONE NODE · SCHEDULE PODS ONTO IT</span>
         </div>
-        <div class="chart" id="chart" role="img" aria-label="Bar chart of the pods on one node: solid bars show CPU requests, shaded extensions show each pod's dynamic limit rising into node slack, a dashed amber line marks allocatable CPU. Scheduling more pods shrinks every limit toward its request.">
+        <div class="chart" id="chart" role="img" aria-label="Bar chart of the pods on one node: solid bars show CPU requests, shaded extensions show each pod's dynamic limit rising into the node's unused CPU, a dashed amber line marks allocatable CPU. Scheduling more pods shrinks every limit toward its request.">
           <div class="ceiling"><em>ALLOCATABLE 4 CPU</em></div>
         </div>
         <div class="widget-controls">
@@ -184,7 +184,7 @@
           <span class="ctrl-hint" id="ctrl-hint">every scheduling event recomputes every limit</span>
         </div>
         <div class="readouts">
-          <span>SLACK <b id="ro-slack">—</b></span>
+          <span>UNUSED <b id="ro-slack">—</b></span>
           <span>MULTIPLIER <b id="ro-mult">—</b></span>
           <span>FULL NODE <span class="amberv">LIMIT → REQUEST</span></span>
         </div>
@@ -203,12 +203,12 @@
         <div class="pillar">
           <span class="accent" style="background:var(--cyan)"></span>
           <h3>No mystery throttling</h3>
-          <p>Tight limits throttle pods on idle nodes — the classic unexplainable latency. Headroom raises ceilings exactly when the node has slack to give.</p>
+          <p>Tight limits throttle pods on idle nodes — the classic unexplainable latency. Headroom raises limits exactly when the node has unused capacity to give.</p>
         </div>
         <div class="pillar">
           <span class="accent" style="background:var(--magenta)"></span>
           <h3>Isolation when it matters</h3>
-          <p>As requests fill the node, every limit converges to its request — the same fair split <code>cpu.weight</code> would enforce under contention. Coherent at both extremes.</p>
+          <p>As requests fill the node, every limit converges to its request — the same fair share <code>cpu.weight</code> enforces under contention. Coherent at both extremes.</p>
         </div>
         <div class="pillar">
           <span class="accent" style="background:var(--amber)"></span>
@@ -233,7 +233,7 @@
         </div>
         <div class="step">
           <h3>Recompute the node</h3>
-          <p>One pass distributes the node's unbooked CPU across managed pods, proportional to their requests — with a floor, caps, and hysteresis.</p>
+          <p>One pass distributes the node's unused CPU across managed pods — each gets a fair share, proportional to its request — with a floor, caps, and hysteresis.</p>
         </div>
         <div class="step">
           <h3>Resize in place</h3>

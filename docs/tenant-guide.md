@@ -7,10 +7,10 @@ should be managed at all, see the [applicability matrix](applicability.md).
 ## The contract
 
 > **Your CPU request is guaranteed.** Your CPU *limit* is your request plus a
-> proportional share of whatever CPU the node hasn't promised to anyone else —
-> high on a quiet node, back to your request on a full one. If you need more
-> sustained CPU, request more. Your limit shrinking is not an incident — it
-> means the node got busier, and you still have everything you requested.
+> fair share of whatever CPU the node hasn't promised to anyone else — high on
+> a quiet node, back to your request on a full one. If you need more sustained
+> CPU, request more. Your limit shrinking is not an incident — it means the
+> node got busier, and you still have everything you requested.
 
 That is the whole model. On an empty node your ceiling approaches the node's
 capacity, so nothing throttles pointlessly. As the node fills with other pods'

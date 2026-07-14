@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your pod just got more headroom — Headroom for app teams</title>
-<meta name="description" content="Someone enrolled your namespace in Headroom. The contract: your CPU request is guaranteed, your limit is your request plus a share of the node's unpromised CPU, and a shrinking limit is not an incident.">
+<meta name="description" content="Someone enrolled your namespace in Headroom. The contract: your CPU request is guaranteed, your limit is your request plus a fair share of the node's unused CPU, and a shrinking limit is not an incident.">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <!-- "Saturday Morning" — the design system's daylight register for pages app
      teams get sent to. Self-contained styles: this page deliberately runs a
@@ -245,7 +245,7 @@
     <div class="cards">
       <div class="card">
         <h3>What changed</h3>
-        <p>Your CPU limit is no longer a fixed number. It's your request, plus a share of whatever CPU the node hasn't promised to anyone else. Empty node: big ceiling. Busy node: your request.</p>
+        <p>Your CPU limit is no longer a fixed number. It's your request, plus a fair share of whatever CPU the node hasn't promised to anyone else. Empty node: big limit. Busy node: your request.</p>
       </div>
       <div class="card">
         <h3>What never changes</h3>
@@ -264,7 +264,7 @@
     <div class="wrap">
       <h2>The whole model, one paragraph</h2>
       <div class="contract">
-        <p><strong>Your CPU request is guaranteed.</strong> Your CPU limit is your request plus a proportional share of whatever CPU the node hasn't promised to anyone else — high on a quiet node, settling back to your request as the node fills. <span class="amberline">If you need more sustained CPU, raise your request</span> — it buys guaranteed capacity, a bigger kernel share under contention, <em>and</em> a bigger slice of slack, all at once. There is no way to get sustained large CPU by requesting little.</p>
+        <p><strong>Your CPU request is guaranteed.</strong> Your CPU limit is your request plus a fair share of whatever CPU the node hasn't promised to anyone else — high on a quiet node, settling back to your request as the node fills. <span class="amberline">If you need more sustained CPU, raise your request</span> — it buys guaranteed capacity, a bigger kernel share under contention, <em>and</em> a bigger slice of the node's unused CPU, all at once. There is no way to get sustained large CPU by requesting little.</p>
       </div>
     </div>
   </section>
