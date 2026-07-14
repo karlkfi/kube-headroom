@@ -38,7 +38,7 @@ func SetupPodWebhookWithManager(mgr ctrl.Manager) error {
 // apiserver gives up and, under Ignore, admits the pod unmutated: a mutating
 // webhook sits in the synchronous API path, so it must fail open fast. The handler
 // itself only does cached reads, so steady-state latency is sub-millisecond.
-// +kubebuilder:webhook:path=/mutate-core-v1-pod,mutating=true,failurePolicy=ignore,sideEffects=None,groups=core,resources=pods,verbs=create,versions=v1,name=mpod-v1.kb.io,admissionReviewVersions=v1,timeoutSeconds=5
+// +kubebuilder:webhook:path=/mutate--v1-pod,mutating=true,failurePolicy=ignore,sideEffects=None,groups=core,resources=pods,verbs=create,versions=v1,name=mpod-v1.kb.io,admissionReviewVersions=v1,timeoutSeconds=5
 
 // PodCustomDefaulter seeds an absent CPU limit at pod-create time so short-lived
 // pods and boot-time-quota runtimes — which the node reconciler may never reach in
