@@ -180,15 +180,15 @@ helm-lint: helm ## Lint both Helm charts.
 	"$(HELM)" lint $(CRDS_CHART) $(OPERATOR_CHART)
 
 .PHONY: helm-template
-helm-template: helm ## Render both charts and validate them with kubeconform.
-	@command -v kubeconform >/dev/null 2>&1 || { \
+helm-template: helm ## Render both charts across the values toggle matrix and validate them with kubeconform.
+	@if command -v kubeconform >/dev/null 2>&1; then \
+		"$(HELM)" template $(CRDS_RELEASE) $(CRDS_CHART) | kubeconform -strict -ignore-missing-schemas -summary; \
+	else \
 		echo "kubeconform not installed; rendering only (CI validates with kubeconform)."; \
 		"$(HELM)" template $(CRDS_RELEASE) $(CRDS_CHART) >/dev/null; \
-		"$(HELM)" template $(OPERATOR_RELEASE) $(OPERATOR_CHART) -n $(HELM_NAMESPACE) >/dev/null; \
-		exit 0; \
-	}; \
-	"$(HELM)" template $(CRDS_RELEASE) $(CRDS_CHART) | kubeconform -strict -ignore-missing-schemas -summary; \
-	"$(HELM)" template $(OPERATOR_RELEASE) $(OPERATOR_CHART) -n $(HELM_NAMESPACE) | kubeconform -strict -ignore-missing-schemas -summary
+	fi
+	@HELM="$(HELM)" OPERATOR_CHART="$(OPERATOR_CHART)" OPERATOR_RELEASE="$(OPERATOR_RELEASE)" \
+		HELM_NAMESPACE="$(HELM_NAMESPACE)" bash scripts/helm-render-matrix.sh
 
 .PHONY: helm-package
 helm-package: helm ## Package both charts into dist/. Set CHART_VERSION=x.y.z to stamp the release version/appVersion.

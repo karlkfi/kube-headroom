@@ -66,3 +66,29 @@ Manager container image reference. image.tag defaults to the chart appVersion.
 {{- $tag := default .Chart.AppVersion .Values.image.tag -}}
 {{- printf "%s:%s" .Values.image.repository $tag -}}
 {{- end -}}
+
+{{/*
+Name of the Secret holding the webhook server's serving cert, and the single
+place that validates the webhook TLS wiring. Only evaluated when the webhook is
+enabled.
+
+  - cert-manager on: cert-manager issues the `webhook-server-cert` Secret (see
+    certmanager.yaml) and injects the CA into the MutatingWebhookConfiguration.
+  - cert-manager off: the operator brings its own. `webhook.certSecretName` names
+    a pre-created TLS Secret (keys tls.crt/tls.key) in the release namespace,
+    mounted in place of the cert-manager Secret, and `webhook.caBundle` supplies
+    the CA for the webhook clientConfig (see webhook.yaml).
+
+Rendering fails fast when the webhook is on, cert-manager is off, and no BYO cert
+Secret is given — otherwise the manager Pod would block forever on a Secret that
+nothing creates.
+*/}}
+{{- define "kube-headroom.webhookCertSecretName" -}}
+{{- if .Values.certmanager.enable -}}
+webhook-server-cert
+{{- else if .Values.webhook.certSecretName -}}
+{{- .Values.webhook.certSecretName -}}
+{{- else -}}
+{{- fail "webhook.enable=true with certmanager.enable=false requires a bring-your-own cert: set webhook.certSecretName to a pre-created TLS Secret (and webhook.caBundle so the MutatingWebhookConfiguration trusts it). Otherwise set certmanager.enable=true or webhook.enable=false." -}}
+{{- end -}}
+{{- end -}}
