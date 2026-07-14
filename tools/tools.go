@@ -12,6 +12,7 @@ package tools
 import (
 	_ "github.com/golangci/golangci-lint/v2/cmd/golangci-lint"
 	_ "golang.org/x/vuln/cmd/govulncheck"
+	_ "helm.sh/helm/v4/cmd/helm"
 	_ "sigs.k8s.io/controller-tools/cmd/controller-gen"
 	_ "sigs.k8s.io/kustomize/kustomize/v5"
 )

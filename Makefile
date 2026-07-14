@@ -1,5 +1,18 @@
-# Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+# Manager image. Repository defaults to the ghcr coordinate; the deploy target
+# splits IMG into image.repository + image.tag for the Helm chart. Override IMG
+# to build/deploy a locally-built image (e.g. e2e passes a kind-loaded tag).
+IMG ?= ghcr.io/karlkfi/kube-headroom:latest
+
+# Helm release + chart configuration.
+# HELM_NAMESPACE is where the operator release (and its namespaced resources)
+# land; it matches the e2e/runbook namespace. CHART_REGISTRY is the OCI
+# destination for `helm push` (image and charts never share a coordinate).
+HELM_NAMESPACE ?= kube-headroom-system
+CRDS_RELEASE ?= kube-headroom-crds
+OPERATOR_RELEASE ?= kube-headroom
+CRDS_CHART ?= charts/kube-headroom-crds
+OPERATOR_CHART ?= charts/kube-headroom
+CHART_REGISTRY ?= oci://ghcr.io/karlkfi/charts
 # YEAR defines the year value used for substituting the YEAR placeholder in the boilerplate header.
 YEAR ?= $(shell date +%Y)
 
@@ -64,7 +77,7 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 .PHONY: check
-check: lint verify-generate backlog-lint shellcheck doc-links test ## Run all fast pre-review checks (mirrors CI). Green here == green in CI.
+check: lint verify-generate verify-helm-sync helm-lint helm-template backlog-lint shellcheck doc-links test ## Run all fast pre-review checks (mirrors CI). Green here == green in CI.
 
 .PHONY: verify-generate
 verify-generate: manifests generate ## Fail if generated manifests/code are out of date.
@@ -149,6 +162,46 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	"$(GOLANGCI_LINT)" config verify
 
+##@ Helm
+
+.PHONY: helm-sync
+helm-sync: ## Sync kubebuilder-generated manifests (config/**) into the Helm charts.
+	bash scripts/helm-sync.sh
+
+.PHONY: verify-helm-sync
+verify-helm-sync: manifests generate helm-sync ## Fail if the charts are out of sync with the generated manifests.
+	@git diff --exit-code -- charts || { \
+		echo "ERROR: charts are out of sync with config/**. Run 'make manifests generate helm-sync' and commit the result."; \
+		exit 1; \
+	}
+
+.PHONY: helm-lint
+helm-lint: helm ## Lint both Helm charts.
+	"$(HELM)" lint $(CRDS_CHART) $(OPERATOR_CHART)
+
+.PHONY: helm-template
+helm-template: helm ## Render both charts and validate them with kubeconform.
+	@command -v kubeconform >/dev/null 2>&1 || { \
+		echo "kubeconform not installed; rendering only (CI validates with kubeconform)."; \
+		"$(HELM)" template $(CRDS_RELEASE) $(CRDS_CHART) >/dev/null; \
+		"$(HELM)" template $(OPERATOR_RELEASE) $(OPERATOR_CHART) -n $(HELM_NAMESPACE) >/dev/null; \
+		exit 0; \
+	}; \
+	"$(HELM)" template $(CRDS_RELEASE) $(CRDS_CHART) | kubeconform -strict -ignore-missing-schemas -summary; \
+	"$(HELM)" template $(OPERATOR_RELEASE) $(OPERATOR_CHART) -n $(HELM_NAMESPACE) | kubeconform -strict -ignore-missing-schemas -summary
+
+.PHONY: helm-package
+helm-package: helm ## Package both charts into dist/.
+	mkdir -p dist
+	"$(HELM)" package $(CRDS_CHART) $(OPERATOR_CHART) -d dist
+
+.PHONY: helm-push
+helm-push: helm-package ## Push both packaged charts to the OCI registry (needs `helm registry login`).
+	@for tgz in dist/$(CRDS_RELEASE)-*.tgz dist/$(OPERATOR_RELEASE)-*.tgz; do \
+		echo "Pushing $$tgz -> $(CHART_REGISTRY)"; \
+		"$(HELM)" push "$$tgz" "$(CHART_REGISTRY)"; \
+	done
+
 ##@ Build
 
 .PHONY: build
@@ -188,35 +241,45 @@ docker-buildx: ## Build and push docker image for the manager for cross-platform
 	rm Dockerfile.cross
 
 .PHONY: build-installer
-build-installer: manifests generate kustomize ## Generate a consolidated YAML with CRDs and deployment.
+build-installer: manifests generate helm-sync helm ## Render a consolidated YAML (CRD + operator) into dist/install.yaml.
 	mkdir -p dist
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
-	"$(KUSTOMIZE)" build config/default > dist/install.yaml
+	@repo="$$(printf '%s' '$(IMG)' | sed -E 's/(.*):[^:/]+$$/\1/')"; \
+	 tag="$$(printf '%s' '$(IMG)' | sed -E 's/.*:([^:/]+)$$/\1/')"; \
+	 "$(HELM)" template $(OPERATOR_RELEASE) $(OPERATOR_CHART) \
+		--namespace $(HELM_NAMESPACE) \
+		--set crds.install=true \
+		--set-string image.repository="$$repo" \
+		--set-string image.tag="$$tag" > dist/install.yaml
 
 ##@ Deployment
 
-ifndef ignore-not-found
-  ignore-not-found = false
-endif
+# The deploy path is Helm-native (Q21): the CRD and operator install as two
+# charts. `make install`/`deploy` drive `helm upgrade --install` so they are
+# idempotent and re-runnable; `uninstall`/`undeploy` are `helm uninstall`. The
+# CRD carries resource-policy: keep, so `make uninstall` leaves live
+# HeadroomConfigs intact.
 
 .PHONY: install
-install: manifests kustomize ## Install CRDs into the K8s cluster specified in ~/.kube/config.
-	@out="$$( "$(KUSTOMIZE)" build config/crd 2>/dev/null || true )"; \
-	if [ -n "$$out" ]; then echo "$$out" | "$(KUBECTL)" apply -f -; else echo "No CRDs to install; skipping."; fi
+install: helm ## Install/upgrade the HeadroomConfig CRD chart into the current kubecontext.
+	"$(HELM)" upgrade --install $(CRDS_RELEASE) $(CRDS_CHART) \
+		--namespace $(HELM_NAMESPACE) --create-namespace
 
 .PHONY: uninstall
-uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	@out="$$( "$(KUSTOMIZE)" build config/crd 2>/dev/null || true )"; \
-	if [ -n "$$out" ]; then echo "$$out" | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -; else echo "No CRDs to delete; skipping."; fi
+uninstall: helm ## Uninstall the CRD chart. resource-policy: keep leaves live HeadroomConfigs and the CRD in place.
+	"$(HELM)" uninstall $(CRDS_RELEASE) --namespace $(HELM_NAMESPACE) --ignore-not-found
 
 .PHONY: deploy
-deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
-	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" apply -f -
+deploy: helm ## Deploy/upgrade the operator to the current kubecontext (override IMG to set the image).
+	@repo="$$(printf '%s' '$(IMG)' | sed -E 's/(.*):[^:/]+$$/\1/')"; \
+	 tag="$$(printf '%s' '$(IMG)' | sed -E 's/.*:([^:/]+)$$/\1/')"; \
+	 "$(HELM)" upgrade --install $(OPERATOR_RELEASE) $(OPERATOR_CHART) \
+		--namespace $(HELM_NAMESPACE) --create-namespace \
+		--set-string image.repository="$$repo" \
+		--set-string image.tag="$$tag"
 
 .PHONY: undeploy
-undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
-	"$(KUSTOMIZE)" build config/default | "$(KUBECTL)" delete --ignore-not-found=$(ignore-not-found) -f -
+undeploy: helm ## Undeploy the operator from the current kubecontext.
+	"$(HELM)" uninstall $(OPERATOR_RELEASE) --namespace $(HELM_NAMESPACE) --ignore-not-found
 
 ##@ Dependencies
 
@@ -236,6 +299,7 @@ CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
 GOVULNCHECK ?= $(LOCALBIN)/govulncheck
+HELM ?= $(LOCALBIN)/helm
 
 ## Tool Versions
 ## controller-gen, kustomize, golangci-lint and govulncheck are pinned in the
@@ -244,6 +308,7 @@ GOVULNCHECK ?= $(LOCALBIN)/govulncheck
 KUSTOMIZE_VERSION ?= $(call toolver,sigs.k8s.io/kustomize/kustomize/v5)
 CONTROLLER_TOOLS_VERSION ?= $(call toolver,sigs.k8s.io/controller-tools)
 GOVULNCHECK_VERSION ?= $(call toolver,golang.org/x/vuln)
+HELM_VERSION ?= $(call toolver,helm.sh/helm/v4)
 
 #ENVTEST_VERSION is the controller-runtime version to use for setup-envtest, derived from go.mod
 ENVTEST_VERSION ?= $(shell v='$(call gomodver,sigs.k8s.io/controller-runtime)'; \
@@ -293,6 +358,11 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 govulncheck-tool: $(GOVULNCHECK) ## Build govulncheck from the tools submodule if necessary.
 $(GOVULNCHECK): $(LOCALBIN)
 	$(call go-build-tool,$(GOVULNCHECK),golang.org/x/vuln/cmd/govulncheck,$(GOVULNCHECK_VERSION))
+
+.PHONY: helm
+helm: $(HELM) ## Build helm from the tools submodule if necessary.
+$(HELM): $(LOCALBIN)
+	$(call go-build-tool,$(HELM),helm.sh/helm/v4/cmd/helm,$(HELM_VERSION))
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary
