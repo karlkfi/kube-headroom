@@ -12,7 +12,6 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q26"></a>Q26 | Populate HeadroomConfig status (stub reconciler) | `controller` `observability` | 🔲 | M | `headroomconfig_controller.Reconcile` is the scaffold TODO, so declared status (ManagedPods, ObservedGeneration, Ready) and its printcolumn are always empty. Implement aggregation or drop the fields. |
 
 ## Deferred
 
