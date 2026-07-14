@@ -12,7 +12,7 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q39"></a>Q39 | Helm chart ergonomics polish | `infra` | 🔲 | S | Small chart fixes: document the `crds.keep` knob in the operator values.yaml, gate the PDB render on replicas>1 (avoids wedging drains at replicas:1), and support `image.digest` pinning. |
+| <a id="Q39"></a>Q39 | Helm chart ergonomics polish | `infra` | 🔲 | S | Two chart fixes: gate the PDB render on replicas>1 (avoids wedging drains at replicas:1), and support `image.digest` pinning. The audit's crds.keep item is moot — Q33 removed that knob. |
 
 ## Deferred
 
