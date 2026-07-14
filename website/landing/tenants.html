@@ -245,7 +245,7 @@
     <div class="cards">
       <div class="card">
         <h3>What changed</h3>
-        <p>Your CPU limit now floats between your request and your request plus your share of the node's unbooked CPU. Empty node: big ceiling. Busy node: your request.</p>
+        <p>Your CPU limit is no longer a fixed number. It's your request, plus a share of whatever CPU the node hasn't promised to anyone else. Empty node: big ceiling. Busy node: your request.</p>
       </div>
       <div class="card">
         <h3>What never changes</h3>
@@ -264,7 +264,7 @@
     <div class="wrap">
       <h2>The whole model, one paragraph</h2>
       <div class="contract">
-        <p><strong>Your CPU request is guaranteed.</strong> Your CPU limit floats between your request and your request plus your proportional share of the node's unbooked CPU. <span class="amberline">If you need more sustained CPU, raise your request</span> — it buys guaranteed capacity, a bigger kernel share under contention, <em>and</em> a bigger slice of slack, all at once. There is no way to get sustained large CPU by requesting little.</p>
+        <p><strong>Your CPU request is guaranteed.</strong> Your CPU limit is your request plus a proportional share of whatever CPU the node hasn't promised to anyone else — high on a quiet node, settling back to your request as the node fills. <span class="amberline">If you need more sustained CPU, raise your request</span> — it buys guaranteed capacity, a bigger kernel share under contention, <em>and</em> a bigger slice of slack, all at once. There is no way to get sustained large CPU by requesting little.</p>
       </div>
     </div>
   </section>
