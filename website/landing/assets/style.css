@@ -262,6 +262,13 @@ code {
   transform: translateZ(0);
   contain: strict;
 }
+/* progressive glow: html.fx is set by main.js only on machines with hardware
+   WebGL (no software rasterizer) and enough cores/memory. The blur applies to
+   the static scene only — it rasterizes once into the horizon's cached layer,
+   never per-frame. Everyone else keeps the layered-halo fake. */
+html.fx .horizon .glow-t { filter: url(#glow); }
+html.fx .horizon .halo { display: none; }
+
 /* pulses travel the straight trails via composited transforms; coordinates
    are SVG user units (593,152)→(376,298) and (607,152)→(824,298) */
 .pulse-a { animation: pulse-a 2.6s linear -0.6s infinite; }

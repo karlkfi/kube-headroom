@@ -59,6 +59,12 @@
         <stop offset="0%" stop-color="#ff2d95" stop-opacity=".08"/>
         <stop offset="100%" stop-color="#ff2d95" stop-opacity=".95"/>
       </linearGradient>
+      <!-- applied via CSS only when html.fx is set (capable-GPU machines);
+           the static scene rasterizes once into the horizon's own layer -->
+      <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+        <feGaussianBlur stdDeviation="3" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
     </defs>
     <rect x="0" y="0" width="1200" height="150" fill="url(#sky)"/>
     <g fill="#bcd2ff" opacity=".55">
@@ -89,13 +95,15 @@
     <!-- light trails: wide low-opacity halo behind a bright core (no SVG
          filters anywhere in this scene — feGaussianBlur re-rasterizes on
          scroll and was the main source of jank) -->
-    <g>
+    <g class="halo">
       <polygon points="584,150 602,150 416,300 336,300" fill="url(#trailc)" opacity=".3"/>
       <polygon points="598,150 616,150 864,300 784,300" fill="url(#trailm)" opacity=".3"/>
+    </g>
+    <g class="glow-t">
       <polygon points="590,150 596,150 396,300 356,300" fill="url(#trailc)"/>
       <polygon points="604,150 610,150 844,300 804,300" fill="url(#trailm)"/>
     </g>
-    <g fill="none" stroke-linecap="round">
+    <g fill="none" stroke-linecap="round" class="glow-t">
       <g stroke="#22e6ff" opacity=".6">
         <path d="M168 300 C160 240 152 170 150 100" stroke-width="10"/>
         <g stroke-width="6">

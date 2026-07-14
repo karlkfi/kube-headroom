@@ -7,6 +7,31 @@
 (function () {
   "use strict";
 
+  // ---- progressive glow (html.fx) ----
+  // Re-enable the SVG blur glow only where it's demonstrably cheap: hardware
+  // WebGL (a software renderer string means GPU rendering is off — the exact
+  // machines the blur chugged on), a reasonable core count, no data-saver,
+  // and no reduced-motion preference. Any failure leaves the halo fallback.
+  (function enableGlowIfCapable() {
+    try {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      if ((navigator.hardwareConcurrency || 0) < 4) return;
+      if (navigator.deviceMemory && navigator.deviceMemory < 8) return;
+      if (navigator.connection && navigator.connection.saveData) return;
+      var canvas = document.createElement("canvas");
+      var gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+      if (!gl) return;
+      var dbg = gl.getExtension("WEBGL_debug_renderer_info");
+      var renderer = dbg
+        ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL))
+        : "";
+      if (/swiftshader|llvmpipe|softpipe|software|basic render/i.test(renderer)) return;
+      document.documentElement.classList.add("fx");
+    } catch (e) {
+      /* stay on the cheap path */
+    }
+  })();
+
   // ---- copy button ----
   var copyBtn = document.getElementById("copy-btn");
   var cmd = document.getElementById("install-cmd");
