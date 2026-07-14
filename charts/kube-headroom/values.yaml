@@ -1,0 +1,123 @@
+# Default values for the kube-headroom operator chart.
+
+# -- Manager container image. tag defaults to the chart appVersion when empty.
+image:
+  repository: ghcr.io/karlkfi/kube-headroom
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# imagePullSecrets referenced by the manager ServiceAccount.
+imagePullSecrets: []
+
+# Override the chart name / fullname used to prefix resource names. Leave empty
+# so a release named `kube-headroom` yields `kube-headroom-<component>` names
+# (the names the e2e suite and runbook expect).
+nameOverride: ""
+fullnameOverride: ""
+
+# Manager replica count. Runs >=2 so the mutating admission webhook (which
+# serves on every replica, not just the leader) has no single point of failure
+# in the synchronous pod-CREATE path. Leader election still gates reconcilers.
+replicas: 2
+
+# Manager container resources.
+resources:
+  limits:
+    cpu: 500m
+    memory: 128Mi
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+# Scheduling controls for the manager Pods.
+nodeSelector: {}
+tolerations: []
+affinity: {}
+# Soft spread across nodes for availability; ScheduleAnyway keeps all replicas
+# schedulable on a single-node kind cluster (required for e2e). Set to [] to
+# disable, or override with your own constraints.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+    labelSelector:
+      matchLabels:
+        control-plane: controller-manager
+        app.kubernetes.io/name: kube-headroom
+
+# Extra args / env passed to the manager, if you need them.
+extraArgs: []
+extraEnv: []
+
+# Leader election gates the reconcilers to a single active replica.
+leaderElection:
+  enable: true
+
+rbac:
+  # Render the CRD admin/editor/viewer helper ClusterRoles. Not used by the
+  # operator itself — they let a cluster admin delegate HeadroomConfig access to
+  # users. Matches the kustomize default.
+  aggregationRoles: true
+
+# PodDisruptionBudget keeping >=1 webhook-serving replica up during voluntary
+# disruptions. Only meaningful with replicas >= 2.
+podDisruptionBudget:
+  enable: true
+  minAvailable: 1
+
+# Birth-limit mutating admission webhook (design §6.5). Seeds limits.cpu at
+# pod-create time for pods the controller can't reach in time.
+webhook:
+  enable: true
+  # Only fire the webhook for namespaces carrying this label (§6.5). Must track
+  # the HeadroomConfig NamespaceSelector; a looser selector here only costs
+  # extra (ignored) invocations, never correctness.
+  namespaceSelector:
+    key: kube-headroom.dev/mode
+    value: managed
+
+# cert-manager issues the webhook (and optionally metrics) serving certificate
+# and injects the CA into the webhook configuration. Requires cert-manager in
+# the cluster. Disable to supply certs another way.
+certmanager:
+  enable: true
+
+# Metrics endpoint (HTTPS on :8443) and its Service are always deployed.
+metrics:
+  # When true, mount a cert-manager-issued serving cert for the metrics server
+  # (requires certmanager.enable) instead of the controller-runtime self-signed
+  # cert. Also switches the ServiceMonitor to verified TLS.
+  certManagerTLS: false
+
+# Prometheus ServiceMonitor for the metrics endpoint. Requires the
+# Prometheus-Operator CRDs (monitoring.coreos.com) to be present.
+prometheus:
+  enable: false
+
+# NetworkPolicies protecting the metrics (:8443) and webhook (:9443) ports.
+networkPolicy:
+  enable: true
+
+# Render the HeadroomConfig CRD in-place as part of THIS release, for a one-shot
+# install. Off by default: the recommended path is to install the standalone
+# kube-headroom-crds chart cluster-wide, on a lifecycle independent of the
+# operator. When true, the CRD carries helm.sh/resource-policy: keep, so
+# `helm uninstall` of the operator leaves live HeadroomConfigs intact.
+crds:
+  install: false
+
+# Optionally render the singleton HeadroomConfig (name: cluster). Off by
+# default so the chart doesn't impose a policy; enable and tune spec to seed one.
+headroomConfig:
+  create: false
+  spec:
+    policy: Proportional
+    dryRun: true
+    namespaceSelector:
+      matchLabels:
+        kube-headroom.dev/mode: managed
+    excludedNamespaces:
+      - kube-system
+    webhook:
+      enabled: true
+      initialMultiplier: "2"

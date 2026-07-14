@@ -1,0 +1,50 @@
+{{- if .Values.networkPolicy.enable }}
+{{/*
+Protect the metrics (:8443) and webhook (:9443) ports. The metrics policy admits
+:8443 only from namespaces labeled `metrics: enabled`. The webhook policy admits
+:9443 from any source: the apiserver invokes the webhook over host networking,
+so it is NOT a Pod in a labeled namespace and cannot be matched by a selector
+(Q19) — TLS + apiserver client auth secure that path instead.
+*/}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-allow-metrics-traffic
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "kube-headroom.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              metrics: enabled
+      ports:
+        - port: 8443
+          protocol: TCP
+{{- if .Values.webhook.enable }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-allow-webhook-traffic
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "kube-headroom.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - ports:
+        - port: 9443
+          protocol: TCP
+{{- end }}
+{{- end }}

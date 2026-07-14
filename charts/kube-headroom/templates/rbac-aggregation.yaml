@@ -1,0 +1,74 @@
+{{- if .Values.rbac.aggregationRoles }}
+{{/*
+CRD helper ClusterRoles (admin/editor/viewer for HeadroomConfig). Not used by
+the operator itself — provided so a cluster admin can delegate HeadroomConfig
+access to users. Mirrors config/rbac/headroomconfig_{admin,editor,viewer}_role.yaml.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-headroomconfig-admin-role
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - kube-headroom.dev
+    resources:
+      - headroomconfigs
+    verbs:
+      - '*'
+  - apiGroups:
+      - kube-headroom.dev
+    resources:
+      - headroomconfigs/status
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-headroomconfig-editor-role
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - kube-headroom.dev
+    resources:
+      - headroomconfigs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - kube-headroom.dev
+    resources:
+      - headroomconfigs/status
+    verbs:
+      - get
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-headroomconfig-viewer-role
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - kube-headroom.dev
+    resources:
+      - headroomconfigs
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - kube-headroom.dev
+    resources:
+      - headroomconfigs/status
+    verbs:
+      - get
+{{- end }}

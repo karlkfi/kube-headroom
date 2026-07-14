@@ -1,0 +1,29 @@
+apiVersion: v2
+name: kube-headroom
+description: |
+  Headroom is a Kubernetes controller that dynamically sets container CPU limits
+  as a function of node slack, recomputed on scheduling events via the GA
+  in-place pod resize subresource. This chart deploys the namespaced operator
+  (manager Deployment, RBAC, metrics, and the opt-in birth-limit admission
+  webhook). Install the kube-headroom-crds chart first, on its own lifecycle.
+type: application
+# Chart version — bump on any packaging or template change; consumers pin this.
+version: 0.1.0
+# appVersion tracks the manager image tag this chart defaults to (image.tag
+# falls back to appVersion when unset).
+appVersion: "0.1.0"
+home: https://github.com/karlkfi/kube-headroom
+sources:
+  - https://github.com/karlkfi/kube-headroom
+keywords:
+  - kube-headroom
+  - cpu
+  - autoscaling
+  - in-place-resize
+# The CRD ships as its OWN chart (kube-headroom-crds), which admins normally
+# install separately — cluster-wide, on a lifecycle independent of this
+# namespaced operator (see docs/plan/kustomize-helm-migration.md). This chart is
+# therefore NOT wired to it as a Helm subchart dependency. For a one-shot
+# install that also lays down the CRD, set crds.install=true: the operator chart
+# then renders the same generated CRD in-place (templates/crd.yaml, synced by
+# `make helm-sync`), avoiding the fragile file:// subchart-vendoring path.

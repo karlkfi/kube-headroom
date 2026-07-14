@@ -1,0 +1,8 @@
+# Values for kube-headroom-crds.
+
+# keep: when true (the default), the CRD is annotated with
+# helm.sh/resource-policy: keep, so `helm uninstall` of this chart leaves the
+# CRD — and therefore every live HeadroomConfig — in place. Set to false only
+# for throwaway clusters where you want `helm uninstall` to remove the schema
+# and cascade-delete all HeadroomConfigs.
+keep: true

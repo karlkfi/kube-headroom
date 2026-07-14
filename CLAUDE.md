@@ -39,12 +39,23 @@ kubebuilder v4 project. API group / annotation prefix: **`kube-headroom.dev`**
 - `api/v1alpha1/` — `HeadroomConfig` CRD (cluster-scoped singleton, name
   `cluster`; §9.3) and the label/annotation key constants.
 - `internal/controller/` — controllers (node reconciler lands in Q4).
-- `config/` — kustomize manifests (CRD, RBAC, manager).
+- `config/` — kustomize manifests (CRD, RBAC, manager). Since Q21 these are the
+  **generation source only**, not the deploy path: `make manifests generate`
+  still owns `config/crd/bases`, `config/rbac/role.yaml`, and
+  `config/webhook/manifests.yaml`, and `make helm-sync` copies those into the
+  charts. Deploy is Helm (`charts/`), not `kubectl apply -k`.
+- `charts/` — two hand-authored Helm charts, the deploy artifact (Q21):
+  `kube-headroom-crds` (the CRD, cluster-wide, `resource-policy: keep`) and
+  `kube-headroom` (the namespaced operator). `scripts/helm-sync.sh` syncs the
+  generated CRD/RBAC/webhook manifests in; never hand-edit the synced files
+  (`charts/**/files/*`, the CRD templates) — regenerate with
+  `make manifests generate helm-sync`. Published as OCI artifacts to
+  `oci://ghcr.io/karlkfi/charts`.
 - `docs/plan/` — plan docs for M/L backlog items.
 - `tools/` — separate Go module (`//go:build tools` pattern) pinning the
-  build-tool versions (controller-gen, kustomize, golangci-lint, govulncheck).
-  The Makefile `go build`s each from here; bump versions in `tools/go.mod`, not
-  the Makefile.
+  build-tool versions (controller-gen, kustomize, golangci-lint, govulncheck,
+  helm). The Makefile `go build`s each from here; bump versions in
+  `tools/go.mod`, not the Makefile.
 
 Build: `make manifests generate` after editing API types; `make build` /
 `make test` (envtest). `make run` runs the manager against the current
@@ -54,10 +65,13 @@ kubecontext.
 
 - **Never hand-edit generated files** — they are overwritten by `make`:
   `**/zz_generated.*.go`, `config/crd/bases/*.yaml`, `config/rbac/role.yaml`,
-  `config/webhook/manifests.yaml`, and `PROJECT`. Change the source markers
-  instead, then regenerate.
-- **After editing `api/**/_types.go` or markers**, run `make manifests generate`.
-  After editing `.go`, run `make test` (unit tests use envtest — a real
+  `config/webhook/manifests.yaml`, `PROJECT`, and the helm-synced files under
+  `charts/**` (`charts/*/templates/*crd*.yaml`, `charts/kube-headroom/files/*`).
+  Change the source markers instead, then regenerate.
+- **After editing `api/**/_types.go` or markers**, run
+  `make manifests generate helm-sync` (the `helm-sync` step re-copies the
+  generated CRD/RBAC/webhook into the charts; CI's `verify-helm-sync` fails on
+  drift). After editing `.go`, run `make test` (unit tests use envtest — a real
   apiserver + etcd; Ginkgo/Gomega, see `suite_test.go`).
 - **Don't delete `// +kubebuilder:scaffold:*` comments** — the CLI injects code
   at them. Scaffold new APIs/webhooks with `kubebuilder create api|webhook`
@@ -79,15 +93,18 @@ kubecontext.
 |---|---|
 | Policy unit tests (fast, no cluster) | `go test ./internal/policy/` |
 | Full unit tests (envtest) | `make test` |
-| Regenerate CRDs/RBAC + deepcopy | `make manifests generate` |
+| Regenerate CRDs/RBAC + deepcopy, sync charts | `make manifests generate helm-sync` |
 | Build the manager binary | `make build` |
 | Lint | `make lint` (fix: `make lint-fix`) |
+| Lint / render the charts | `make helm-lint helm-template` |
 | Run against current kubecontext | `make run` |
+| Install CRD chart / deploy operator | `make install` / `make deploy IMG=…` |
 | e2e on a dedicated kind cluster | `make setup-test-e2e test-e2e` |
 | Apply the sample config | `kubectl apply -k config/samples` |
 | Lint the backlog | `bash scripts/lint-backlog.sh docs/STATUS.md` |
 
 **Verify a change** end-to-end before opening a PR: `make test` for anything
-touching Go, plus `make manifests generate` (and commit the regenerated files)
-whenever API markers change. The sample (`name: cluster`) exercises the
+touching Go, plus `make manifests generate helm-sync` (and commit the
+regenerated files) whenever API markers change — CI's `verify-helm-sync` fails
+if the charts drift from `config/**`. The sample (`name: cluster`) exercises the
 singleton CEL rule.

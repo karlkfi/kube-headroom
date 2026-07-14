@@ -1,0 +1,52 @@
+{{/*
+Metrics RBAC: the auth-delegator role (TokenReview/SubjectAccessReview) the
+metrics server uses to authn/authz scrape requests, plus a metrics-reader
+ClusterRole scrapers bind to. These mirror config/rbac/metrics_auth_role.yaml
+and metrics_reader_role.yaml.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-metrics-auth-role
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-metrics-auth-rolebinding
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kube-headroom.fullname" . }}-metrics-auth-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kube-headroom.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kube-headroom.fullname" . }}-metrics-reader
+  labels:
+    {{- include "kube-headroom.labels" . | nindent 4 }}
+rules:
+  - nonResourceURLs:
+      - "/metrics"
+    verbs:
+      - get
