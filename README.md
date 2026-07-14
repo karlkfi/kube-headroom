@@ -58,8 +58,8 @@ source of truth — `kubectl get pod` shows the actually-enforced limit.
   last values; `cpu.weight` still enforces fair sharing. *No failure mode is
   worse than not running Headroom.*
 - **CPU-only, by design** — CPU is compressible (exceeding the ceiling
-  throttles); memory/GPU/storage are not (they kill), so the "ceiling floats
-  with slack" model only makes sense for CPU.
+  throttles); memory/GPU/storage are not (they kill), so the "ceiling tracks
+  slack" model only makes sense for CPU.
 - **Opt-in per namespace**, safe to run alongside unmanaged workloads.
 - **Debuggable** — every limit change is explainable from observable inputs
   (annotation + event + metrics).

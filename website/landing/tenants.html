@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Your pod just got more headroom — Headroom for app teams</title>
-<meta name="description" content="Someone enrolled your namespace in Headroom. The contract: your CPU request is guaranteed, your limit floats with node slack, and a shrinking limit is not an incident.">
+<meta name="description" content="Someone enrolled your namespace in Headroom. The contract: your CPU request is guaranteed, your limit is your request plus a share of the node's unpromised CPU, and a shrinking limit is not an incident.">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <!-- "Saturday Morning" — the design system's daylight register for pages app
      teams get sent to. Self-contained styles: this page deliberately runs a
@@ -295,7 +295,7 @@
         </div>
         <div class="howto-item">
           <h3><span class="dot" style="background:var(--coral)"></span>The one real caveat</h3>
-          <p>JVMs and <code>automaxprocs</code>-style Go binaries size thread pools from the limit <em>at boot</em> and never re-read it — a live-raised ceiling won't grow a boot-sized pool. Set your parallelism explicitly, or accept birth-limit sizing. Details in the <a href="docs/tenant-guide.html#runtimes-that-read-cpu-quota-once-at-startup">full guide</a>.</p>
+          <p>Many runtimes size thread pools from a CPU count <em>at boot</em> and never re-read it — a live-raised ceiling won't grow a boot-sized pool. Set your parallelism explicitly, or accept birth-limit sizing. The <a href="docs/cpu-footguns.html">CPU footguns catalog</a> covers JVM, Go, Python, Node, .NET, Rust, and the ML/GPU stacks, with workarounds for each.</p>
         </div>
       </div>
       <p style="font-size:14.5px; max-width:70ch">Running VPA? The two compose cleanly — VPA owns requests, Headroom owns limits — as long as VPA is set to <code>controlledValues: RequestsOnly</code>. Using HPA? Structurally unaffected, but unthrottled pods reveal true demand, so review your thresholds. Recipes for both are in the full guide.</p>

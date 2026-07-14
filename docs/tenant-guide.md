@@ -6,11 +6,11 @@ should be managed at all, see the [applicability matrix](applicability.md).
 
 ## The contract
 
-> **Your CPU request is guaranteed.** Your CPU *limit* floats between your
-> request and your request plus your proportional share of the node's unbooked
-> CPU. If you need more sustained CPU, request more. Your limit shrinking is not
-> an incident — it means the node got busier, and you still have everything you
-> requested.
+> **Your CPU request is guaranteed.** Your CPU *limit* is your request plus a
+> proportional share of whatever CPU the node hasn't promised to anyone else —
+> high on a quiet node, back to your request on a full one. If you need more
+> sustained CPU, request more. Your limit shrinking is not an incident — it
+> means the node got busier, and you still have everything you requested.
 
 That is the whole model. On an empty node your ceiling approaches the node's
 capacity, so nothing throttles pointlessly. As the node fills with other pods'
@@ -99,7 +99,7 @@ grow to use it — so the extra headroom is available to the kernel but not to y
 runtime's parallelism. Options:
 
 - Set `GOMAXPROCS` / thread counts **explicitly** to your intended steady-state
-  parallelism rather than deriving them from the (now-floating) limit.
+  parallelism rather than deriving them from the (now-dynamic) limit.
 - Use a runtime knob that **re-reads** the quota periodically, if available.
 - Accept birth-limit sizing: the admission webhook (when enabled) seeds a
   generous limit at CREATE time, which is a good value for boot-time-sized
@@ -107,6 +107,11 @@ runtime's parallelism. Options:
 
 Either way, note that a raised *limit* does not change `GOMAXPROCS` for you —
 runtime tuning is yours to own.
+
+This class of problem is much bigger than the JVM and Go — Python, Node.js,
+.NET, Rust, OpenMP/BLAS, and most ML/GPU frameworks all size parallelism from
+some CPU count at startup. See the [CPU footguns catalog](cpu-footguns.md) for
+the per-runtime symptoms and workarounds.
 
 ## Using Headroom together with VPA
 
