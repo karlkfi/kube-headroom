@@ -27,7 +27,7 @@ is why they're gated rather than scheduled.
 One CRD object (`headroomconfigs.kube-headroom.dev`) serves multiple versions
 via `spec.versions[]`; exactly one is `storage: true`. A promotion adds a
 version and (eventually) moves storage — it never forks the CRD or the chart
-(see the chart-naming rationale in `kustomize-helm-migration.md`). The
+(see the chart-naming rationale in `archive/kustomize-helm-migration.md`). The
 kubebuilder multi-version workflow:
 
 1. `kubebuilder create api --version <new> --kind HeadroomConfig` scaffolds
