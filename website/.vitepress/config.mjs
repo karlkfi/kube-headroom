@@ -35,6 +35,13 @@ export default defineConfig({
   },
   head: [
     ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
+    // Social preview — served from the landing page root, shared by every
+    // docs page. Regenerate with website/og/render.sh.
+    ["meta", { property: "og:site_name", content: "Headroom" }],
+    ["meta", { property: "og:image", content: "https://kube-headroom.dev/og.png" }],
+    ["meta", { property: "og:image:width", content: "1200" }],
+    ["meta", { property: "og:image:height", content: "630" }],
+    ["meta", { name: "twitter:card", content: "summary_large_image" }],
   ],
   themeConfig: {
     // The navbar title is a custom component (theme/CustomNavBarTitle.vue,

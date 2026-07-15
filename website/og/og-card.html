@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>og-card source — render with ./render.sh</title>
+<!-- Source for the social preview (og:image) at website/landing/og.png.
+     Full CRT moment per the design system: scanlines, phosphor OSD, RGB-split
+     wordmark — reserved for 404 / release posts / OG cards. Regenerate with
+     website/og/render.sh (headless Chrome, macOS system fonts: Impact, Menlo,
+     Helvetica Neue — render on a Mac so the type matches the live site). -->
+<style>
+  :root {
+    --ground: #020304;
+    --text: #e8edf6;
+    --body: #cdd8ea;
+    --muted: #8b96ab;
+    --faint: #5a6478;
+    --cyan: #22e6ff;
+    --magenta: #ff2d95;
+    --amber: #ffd23f;
+    --phosphor: #7df9c2;
+    --mono: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --impact: Impact, "Arial Black", sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    position: relative;
+    background: radial-gradient(ellipse at 50% 32%, #0a1018 0%, var(--ground) 78%);
+    font-family: var(--sans);
+    color: var(--body);
+  }
+  /* scanlines */
+  body::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,.30) 0 1px, transparent 1px 3px);
+    z-index: 4;
+  }
+  /* curvature vignette */
+  body::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%);
+    z-index: 5;
+  }
+  svg.scene { position: absolute; inset: 0; z-index: 1; }
+
+  .osd {
+    position: absolute;
+    font-family: var(--mono);
+    font-size: 16px;
+    letter-spacing: 3px;
+    color: var(--phosphor);
+    text-shadow: 0 0 10px rgba(125,249,194,.8);
+    z-index: 6;
+  }
+  .osd.tl { top: 26px; left: 34px; }
+  .osd.tr { top: 26px; right: 34px; }
+  .osd.bl { bottom: 24px; left: 34px; }
+  .osd.br { bottom: 24px; right: 34px; }
+
+  .content { position: absolute; left: 310px; top: 186px; z-index: 3; }
+  .kube {
+    font-family: var(--mono);
+    font-size: 20px;
+    letter-spacing: 12px;
+    color: var(--muted);
+  }
+  .word {
+    display: inline-block;
+    position: relative;
+    margin-top: 10px;
+    font-family: var(--impact);
+    font-weight: 900;
+    font-size: 128px;
+    line-height: .95;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text);
+    text-shadow: 0 0 26px rgba(34,230,255,.35),
+      -5px 3px 0 rgba(255,45,149,.55), 5px -3px 0 rgba(34,230,255,.55);
+  }
+  /* interlacing: dark scan rows visible through the letterforms */
+  .word::after {
+    content: "";
+    position: absolute;
+    inset: 4px -8px;
+    pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(5,7,12,.5) 0 3px, transparent 3px 8px);
+  }
+  .tagline {
+    margin-top: 24px;
+    font-size: 25px;
+    letter-spacing: .2px;
+    color: var(--body);
+  }
+  .subline {
+    margin-top: 16px;
+    font-family: var(--mono);
+    font-size: 14px;
+    letter-spacing: 3px;
+    color: var(--faint);
+  }
+</style>
+</head>
+<body>
+
+<!-- night-drive horizon + full-width amber ceiling + Rising H (A3 "Climb",
+     hero raster: 4 fade rows down to .26) -->
+<svg class="scene" width="1200" height="630" viewBox="0 0 1200 630" aria-hidden="true">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff2d95" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#ff2d95" stop-opacity=".13"/>
+    </linearGradient>
+    <radialGradient id="sunglow">
+      <stop offset="0%" stop-color="#ff2d95" stop-opacity=".38"/>
+      <stop offset="100%" stop-color="#ff2d95" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffd23f"/>
+      <stop offset="55%" stop-color="#ff9d3f"/>
+      <stop offset="100%" stop-color="#ff2d95"/>
+    </linearGradient>
+    <mask id="sunmask">
+      <rect x="880" y="400" width="160" height="82" fill="#fff"/>
+      <rect x="880" y="449" width="160" height="2.5" fill="#000"/>
+      <rect x="880" y="458" width="160" height="3.5" fill="#000"/>
+      <rect x="880" y="467" width="160" height="4.5" fill="#000"/>
+      <rect x="880" y="475" width="160" height="5.5" fill="#000"/>
+    </mask>
+    <linearGradient id="trailc" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22e6ff" stop-opacity=".06"/>
+      <stop offset="100%" stop-color="#22e6ff" stop-opacity=".8"/>
+    </linearGradient>
+    <linearGradient id="trailm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ff2d95" stop-opacity=".06"/>
+      <stop offset="100%" stop-color="#ff2d95" stop-opacity=".8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- sky + stars -->
+  <rect x="0" y="330" width="1200" height="152" fill="url(#sky)"/>
+  <g fill="#bcd2ff" opacity=".55">
+    <circle cx="90" cy="68" r="1.4"/><circle cx="410" cy="46" r="1.2"/>
+    <circle cx="640" cy="92" r="1"/><circle cx="760" cy="300" r="1"/>
+    <circle cx="1030" cy="270" r="1.2"/><circle cx="1120" cy="90" r="1.4"/>
+    <circle cx="330" cy="470" r="1"/><circle cx="560" cy="446" r="1.1"/>
+  </g>
+
+  <!-- striped sun on the horizon -->
+  <circle cx="960" cy="482" r="96" fill="url(#sunglow)"/>
+  <g mask="url(#sunmask)"><circle cx="960" cy="482" r="62" fill="url(#sun)"/></g>
+
+  <!-- horizon + perspective grid -->
+  <line x1="0" y1="482" x2="1200" y2="482" stroke="#22e6ff" stroke-width="1" opacity=".5"/>
+  <g stroke="#22e6ff" stroke-width="1" opacity=".16">
+    <line x1="960" y1="482" x2="900" y2="630"/><line x1="960" y1="482" x2="800" y2="630"/>
+    <line x1="960" y1="482" x2="660" y2="630"/><line x1="960" y1="482" x2="460" y2="630"/>
+    <line x1="960" y1="482" x2="200" y2="630"/><line x1="960" y1="482" x2="-140" y2="630"/>
+    <line x1="960" y1="482" x2="1030" y2="630"/><line x1="960" y1="482" x2="1130" y2="630"/>
+    <line x1="960" y1="482" x2="1290" y2="630"/><line x1="960" y1="482" x2="1520" y2="630"/>
+    <line x1="0" y1="490" x2="1200" y2="490"/><line x1="0" y1="502" x2="1200" y2="502"/>
+    <line x1="0" y1="520" x2="1200" y2="520"/><line x1="0" y1="546" x2="1200" y2="546"/>
+    <line x1="0" y1="582" x2="1200" y2="582"/><line x1="0" y1="624" x2="1200" y2="624"/>
+  </g>
+
+  <!-- light trails off the vanishing point -->
+  <polygon points="944,482 962,482 776,630 696,630" fill="url(#trailc)" opacity=".35"/>
+  <polygon points="958,482 976,482 1224,630 1144,630" fill="url(#trailm)" opacity=".35"/>
+
+  <!-- full-width allocatable ceiling; amber = ceiling semantics only -->
+  <line x1="96" y1="120" x2="1104" y2="120" stroke="#ffd23f" stroke-width="3"
+        stroke-dasharray="16 13" opacity=".9"/>
+  <text x="1104" y="102" text-anchor="end" fill="#ffd23f" opacity=".85"
+        font-family="SFMono-Regular, Menlo, Consolas, monospace"
+        font-size="14" letter-spacing="5">ALLOCATABLE</text>
+
+  <!-- Rising H — right post climbs toward the ceiling, dissolving into bars -->
+  <g fill="#22e6ff">
+    <rect x="96"  y="248" width="52" height="182"/>
+    <rect x="96"  y="330" width="162" height="34"/>
+    <rect x="206" y="235" width="52" height="195"/>
+    <rect x="206" y="205" width="52" height="20" opacity=".8"/>
+    <rect x="206" y="177" width="52" height="18" opacity=".6"/>
+    <rect x="206" y="151" width="52" height="16" opacity=".42"/>
+    <rect x="206" y="129" width="52" height="12" opacity=".26"/>
+  </g>
+</svg>
+
+<span class="osd tl">■ REC</span>
+<span class="osd tr">CH 01 · ON AIR</span>
+<span class="osd bl">SP 0:00:00</span>
+<span class="osd br">kube-headroom.dev</span>
+
+<div class="content">
+  <div class="kube">KUBE ·</div>
+  <div class="word">HEADROOM</div>
+  <div class="tagline">CPU limits that resize to share unrequested capacity.</div>
+  <div class="subline">NO RESTARTS · NO METRICS PIPELINE · NO OSCILLATION</div>
+</div>
+
+</body>
+</html>
