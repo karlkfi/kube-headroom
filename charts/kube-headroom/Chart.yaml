@@ -15,6 +15,12 @@ appVersion: "0.1.0"
 home: https://github.com/karlkfi/kube-headroom
 sources:
   - https://github.com/karlkfi/kube-headroom
+maintainers:
+  - name: Karl Isenberg
+# Helm's Chart.yaml schema has no license field; this is the Artifact Hub
+# convention for declaring one.
+annotations:
+  artifacthub.io/license: Apache-2.0
 keywords:
   - kube-headroom
   - cpu

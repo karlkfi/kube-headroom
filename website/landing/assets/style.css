@@ -569,6 +569,15 @@ footer {
   gap: 10px;
   flex-wrap: wrap;
 }
+.foot-legal {
+  margin-top: 12px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--faint);
+}
+.foot-legal a { color: var(--faint); }
+.foot-legal a:hover { color: var(--cyan); }
 .fx-note { cursor: help; position: relative; }
 html.fx .fx-note { color: var(--cyan); }
 .fx-note:hover::after,

@@ -13,9 +13,9 @@ docs: `docs/runbook.md` (operators), `docs/tenant-guide.md` (app teams),
   (`feat/…`, `chore/…`, `fix/…`), push, open a PR with `gh pr create`; Karl
   merges. CI (lint, test, e2e, backlog) runs on the PR.
 - **Conventional commits** (`feat:`, `fix:`, `chore:`, `docs:`, `test:`).
-- **No licensing** — do not add license/copyright headers or a `LICENSE` file
-  until Karl explicitly asks. `hack/boilerplate.go.txt` is intentionally empty
-  so generated files stay header-free; keep it that way.
+- **Licensing** — Apache-2.0 (root `LICENSE`, copyright Karl Isenberg). Do
+  **not** add per-file license/copyright headers: `hack/boilerplate.go.txt` is
+  intentionally empty so generated files stay header-free; keep it that way.
 
 ## Backlog
 

@@ -3,6 +3,9 @@
 **Dynamic CPU limits proportional to node slack — recomputed on scheduling
 events, applied via the in-place pod resize subresource.**
 
+[github.com/karlkfi/kube-headroom](https://github.com/karlkfi/kube-headroom) ·
+[karlkfi.github.io/kube-headroom](https://karlkfi.github.io/kube-headroom/)
+
 On an empty node a pod's CPU limit approaches the node's allocatable CPU (no
 pointless throttling). As the node fills with requests, limits converge toward
 each pod's request (predictable, request-proportional fair sharing). The limit
@@ -114,3 +117,9 @@ make run                     # run the manager against the current kubecontext
   when not to.
 
 In-flight plan docs live under `docs/plan/`.
+
+## License
+
+Copyright 2026 Karl Isenberg.
+
+Licensed under the [Apache License 2.0](LICENSE).
