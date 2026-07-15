@@ -1,8 +1,8 @@
 name: Tests
 
-# Markdown/docs edits can't change the envtest suite outcome, so skip when the
-# diff is docs-only. paths-ignore skips only when every changed file matches, so
-# a mixed code+docs PR still runs the tests.
+# Markdown/docs/website edits can't change the envtest suite outcome, so skip
+# when the diff is docs- or website-only. paths-ignore skips only when every
+# changed file matches, so a mixed code+docs PR still runs the tests.
 on:
   push:
     branches:
@@ -10,10 +10,12 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
+      - 'website/**'
   pull_request:
     paths-ignore:
       - '**.md'
       - 'docs/**'
+      - 'website/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
