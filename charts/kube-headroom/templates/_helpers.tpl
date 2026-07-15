@@ -60,11 +60,16 @@ ServiceAccount name used by the manager Pods and RBAC bindings.
 {{- end -}}
 
 {{/*
-Manager container image reference. image.tag defaults to the chart appVersion.
+Manager container image reference. image.digest (immutable pin) takes
+precedence over image.tag; image.tag defaults to the chart appVersion.
 */}}
 {{- define "kube-headroom.image" -}}
+{{- if .Values.image.digest -}}
+{{- printf "%s@%s" .Values.image.repository .Values.image.digest -}}
+{{- else -}}
 {{- $tag := default .Chart.AppVersion .Values.image.tag -}}
 {{- printf "%s:%s" .Values.image.repository $tag -}}
+{{- end -}}
 {{- end -}}
 
 {{/*
