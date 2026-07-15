@@ -14,6 +14,11 @@
 </head>
 <body>
 
+<a class="announce" href="docs/news/2026-07-headroom-v0.1.0.html">
+  <span class="announce-tag">NEW</span>
+  Headroom v0.1.0 — first public release, Apache-2.0. Read the announcement →
+</a>
+
 <nav class="nav" aria-label="Main">
   <a class="brand" href="./">
     <svg width="24" height="24" viewBox="0 0 100 100" aria-hidden="true"><line x1="14" y1="16" x2="86" y2="16" stroke="#ffd23f" stroke-width="5" stroke-dasharray="8 7"/><rect x="20" y="44" width="20" height="42" fill="#22e6ff"/><rect x="58" y="36" width="20" height="50" fill="#22e6ff"/><rect x="58" y="24" width="20" height="8" fill="#22e6ff" opacity=".85"/><rect x="20" y="55" width="58" height="14" fill="#22e6ff"/></svg>
@@ -278,9 +283,9 @@
     <div class="wrap">
       <h2 id="status-h" class="sr-only">Project status</h2>
       <div class="card">
-        <h3><span aria-hidden="true">▮▮</span> TEST SIGNAL · EARLY DEVELOPMENT</h3>
-        <p>Headroom is under active development. The policy core is implemented with table + property tests covering every design invariant; the controller is in progress and <strong>not yet deployable</strong>.</p>
-        <p>When it ships, it defaults to <code>dryRun: true</code> — computing targets, annotating pods, and emitting metrics without issuing a single resize until you flip the switch. Follow progress in the <a href="https://github.com/karlkfi/kube-headroom/blob/main/docs/STATUS.md">backlog</a> or star the <a href="https://github.com/karlkfi/kube-headroom">repo</a>.</p>
+        <h3><span aria-hidden="true">▮▮</span> ON AIR · v0.1.0</h3>
+        <p>Headroom <a href="docs/news/2026-07-headroom-v0.1.0.html">v0.1.0 is out</a> — the first public release, Apache-2.0. The policy core is covered by table + property tests for every design invariant, and the controller installs via two Helm charts (<a href="https://github.com/karlkfi/kube-headroom/releases/tag/v0.1.0">release notes</a>).</p>
+        <p>It defaults to <code>dryRun: true</code> — computing targets, annotating pods, and emitting metrics without issuing a single resize until you flip the switch. Start with the <a href="docs/runbook.html">runbook preflight</a>, follow priorities in the <a href="https://github.com/karlkfi/kube-headroom/blob/main/docs/STATUS.md">backlog</a>, or star the <a href="https://github.com/karlkfi/kube-headroom">repo</a>.</p>
       </div>
     </div>
   </section>

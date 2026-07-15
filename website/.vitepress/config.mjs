@@ -45,12 +45,19 @@ export default defineConfig({
     logo: "/logo.svg",
     logoLink: { link: "/kube-headroom/", target: "_self" },
     nav: [
+      { text: "News", link: "/news/" },
       { text: "Design", link: "/design" },
       { text: "Runbook", link: "/runbook" },
       { text: "Tenant Guide", link: "/tenant-guide" },
       { text: "Applicability", link: "/applicability" },
     ],
     sidebar: [
+      {
+        text: "News",
+        items: [
+          { text: "v0.1.0 — first public release", link: "/news/2026-07-headroom-v0.1.0" },
+        ],
+      },
       {
         text: "Architecture",
         items: [{ text: "Design (source of truth)", link: "/design" }],
