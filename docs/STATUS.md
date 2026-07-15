@@ -6,7 +6,7 @@ the top of the Queue.
 **Status:** 🔲 ready · 🚫 blocked
 **Size:**   S = one session/PR · M = 2–3 sessions · L = needs a plan doc under `docs/plan/`
 **Labels:** `policy` `controller` `webhook` `observability` `tests` `docs` `infra` `security` `spike`
-**Next ID:** Q44
+**Next ID:** Q45
 
 ## Queue
 
@@ -15,7 +15,7 @@ the top of the Queue.
 | <a id="Q41"></a>Q41 | Apache-2.0 licensing | `docs` `infra` | 🔲 | S | Karl lifted the no-license rule (2026-07). Root `LICENSE` (no per-file headers), README section (© Karl Isenberg), chart/package.json license fields, policy-doc rewrites. |
 | <a id="Q42"></a>Q42 | Release automation: v* tag → image + charts + GitHub Release | `infra` | 🔲 | S | release.yml: multi-arch image (bare-version tag = chart appVersion), charts gated on image, `gh release create`. Then ops: flip public, enable Pages, tag v0.1.0. |
 | <a id="Q43"></a>Q43 | v0.1.0 announcement: landing banner, News page, status copy | `docs` | 🔲 | S | `docs/news/` (index + v0.1.0 post), News nav/sidebar in VitePress, announce banner on landing, retire "not yet deployable" copy in README + landing status card. Merge only after the v0.1.0 tag exists. |
-| <a id="Q40"></a>Q40 | Project website on GitHub Pages | `docs` `infra` | 🔲 | M | `website/`: hand-crafted landing (A3 mark, night-drive hero, live slack widget) + VitePress docs + Pages workflow. v2: OG image, custom domain, tenant pages. |
+| <a id="Q44"></a>Q44 | OG/social-preview image for the website | `docs` | 🔲 | S | PNG og:image (1200×630, night-drive hero art + wordmark) for landing + docs pages; wire `og:image`/`twitter:card=summary_large_image`. Last v2 leftover from Q40 (site live at kube-headroom.dev). |
 | <a id="Q39"></a>Q39 | Helm chart ergonomics polish | `infra` | 🔲 | S | Two chart fixes: gate the PDB render on replicas>1 (avoids wedging drains at replicas:1), and support `image.digest` pinning. The audit's crds.keep item is moot — Q33 removed that knob. |
 
 ## Deferred
