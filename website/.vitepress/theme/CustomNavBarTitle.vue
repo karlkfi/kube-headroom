@@ -11,7 +11,7 @@ const { hasSidebar } = useSidebar();
 
 <template>
   <div class="VPNavBarTitle" :class="{ 'has-sidebar': hasSidebar }">
-    <a class="title" href="/kube-headroom/" target="_self">
+    <a class="title" href="/" target="_self">
       <img class="logo" :src="withBase('/logo.svg')" alt="" />
       <span>KUBE-HEADROOM</span>
     </a>

@@ -9,13 +9,13 @@ const resolveLocal = (p) =>
 
 // Docs subsite for kube-headroom. Markdown sources live in the repo's docs/
 // directory (srcDir below) — this config only curates navigation and theme.
-// Deployed under /kube-headroom/docs/ on GitHub Pages; the hand-crafted
-// landing page (website/landing/) owns the site root.
+// Deployed at https://kube-headroom.dev/docs/ (GitHub Pages custom domain);
+// the hand-crafted landing page (website/landing/) owns the site root.
 export default defineConfig({
   title: "Headroom",
   description:
     "CPU limits that resize to share unrequested node capacity — recomputed on scheduling events, applied via in-place pod resize.",
-  base: "/kube-headroom/docs/",
+  base: "/docs/",
   srcDir: "../docs",
   outDir: "./.vitepress/dist",
   srcExclude: ["STATUS.md", "plan/**"],
@@ -34,7 +34,7 @@ export default defineConfig({
     },
   },
   head: [
-    ["link", { rel: "icon", type: "image/svg+xml", href: "/kube-headroom/favicon.svg" }],
+    ["link", { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" }],
   ],
   themeConfig: {
     // The navbar title is a custom component (theme/CustomNavBarTitle.vue,
@@ -43,7 +43,7 @@ export default defineConfig({
     // but kept for anything else that reads them (e.g. local search).
     siteTitle: "KUBE-HEADROOM",
     logo: "/logo.svg",
-    logoLink: { link: "/kube-headroom/", target: "_self" },
+    logoLink: { link: "/", target: "_self" },
     nav: [
       { text: "Design", link: "/design" },
       { text: "Runbook", link: "/runbook" },
