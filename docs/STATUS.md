@@ -12,7 +12,6 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q44"></a>Q44 | Website v2 polish | `docs` | 🔲 | S | Leftovers from Q40/Q43 (site live at kube-headroom.dev since 2026-07-15): OG image PNG (1200×630 night-drive art, wire og:image + twitter:card) and more tenant pages. Nav overlap fixed in #75. |
 
 ## Deferred
 

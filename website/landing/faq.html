@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Headroom FAQ — why did my CPU limit change?</title>
+<meta name="description" content="Frequently asked questions for teams whose namespaces run under Headroom: why limits shrink, what to do about throttling, opting out, capping your ceiling, JVM/Go thread-pool caveats, and HPA/VPA interactions.">
+<meta property="og:title" content="Headroom FAQ — why did my CPU limit change?">
+<meta property="og:description" content="Why limits shrink, what to do about throttling, opting out, capping your ceiling, and the boot-time thread-pool caveat — short answers with links to the full docs.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://kube-headroom.dev/faq.html">
+<meta property="og:site_name" content="Headroom">
+<meta property="og:image" content="https://kube-headroom.dev/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="KUBE·HEADROOM — CPU limits that resize to share unrequested capacity. Retro broadcast card: cyan Rising-H mark climbing toward a dashed amber allocatable ceiling over a night-drive horizon.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<!-- "Saturday Morning" — the design system's daylight register for pages app
+     teams get sent to. Self-contained styles, matching tenants.html. -->
+<style>
+  :root {
+    --cream: #f6f1e4;
+    --ink: #23202b;
+    --ink-soft: #4d4759;
+    --ink-faint: #6b6478;
+    --teal: #14a89b;
+    --teal-deep: #0d7f75;
+    --purple: #5b3a8e;
+    --coral: #ff7059;
+    --sun: #ffc233;
+    --pink: #ff2d95;
+    --mono: "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --display: "Arial Black", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--cream);
+    color: var(--ink-soft);
+    font-family: var(--sans);
+    line-height: 1.6;
+    font-size: 16px;
+    overflow-x: hidden;
+  }
+  a { color: var(--teal-deep); }
+  a:focus-visible { outline: 2px solid var(--purple); outline-offset: 2px; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 24px; }
+  code {
+    font-family: var(--mono);
+    font-size: .9em;
+    background: #fff;
+    border: 1.5px solid var(--ink);
+    border-radius: 4px;
+    padding: 1px 6px;
+    color: var(--ink);
+  }
+
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px 24px;
+    padding: 18px 24px;
+    border-bottom: 3px solid var(--ink);
+    background: var(--cream);
+    position: relative;
+    z-index: 3;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--display);
+    font-size: 15px;
+    letter-spacing: 1px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .brand .tag { font-family: var(--mono); font-size: 10px; letter-spacing: 2px; color: var(--ink-faint); }
+  .nav-links {
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px 22px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 1.5px;
+  }
+  .nav-links a { color: var(--ink-faint); text-decoration: none; }
+  .nav-links a:hover { color: var(--teal-deep); }
+
+  .hero { position: relative; overflow: hidden; padding: 64px 0 8px; }
+  .day-art { position: absolute; z-index: 1; pointer-events: none; }
+  .hero .wrap { position: relative; z-index: 2; }
+  .kicker {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 3px;
+    color: var(--purple);
+    text-transform: uppercase;
+  }
+  h1 {
+    font-family: var(--display);
+    font-size: clamp(32px, 5vw, 48px);
+    line-height: 1.02;
+    letter-spacing: -0.5px;
+    color: var(--ink);
+    margin: 14px 0 0;
+    text-wrap: balance;
+  }
+  h1 .swash { color: var(--teal); font-style: italic; }
+  .lede { font-size: 16.5px; max-width: 56ch; margin: 18px 0 0; }
+
+  main { position: relative; z-index: 2; padding: 40px 0 64px; }
+  .faq-item {
+    background: #fff;
+    border: 2px solid var(--ink);
+    border-radius: 12px;
+    padding: 22px 26px;
+    margin-bottom: 18px;
+  }
+  .faq-item:nth-child(6n+1) { box-shadow: 5px 5px 0 var(--teal); }
+  .faq-item:nth-child(6n+2) { box-shadow: 5px 5px 0 var(--purple); }
+  .faq-item:nth-child(6n+3) { box-shadow: 5px 5px 0 var(--coral); }
+  .faq-item:nth-child(6n+4) { box-shadow: 5px 5px 0 var(--sun); }
+  .faq-item:nth-child(6n+5) { box-shadow: 5px 5px 0 var(--pink); }
+  .faq-item:nth-child(6n+6) { box-shadow: 5px 5px 0 var(--ink); }
+  .faq-item h2 {
+    font-family: var(--display);
+    font-size: 18px;
+    letter-spacing: -0.2px;
+    color: var(--ink);
+    margin: 0 0 10px;
+  }
+  .faq-item h2 a { color: inherit; text-decoration: none; }
+  .faq-item h2 a:hover::after { content: " #"; color: var(--ink-faint); }
+  .faq-item p { margin: 0 0 10px; font-size: 15px; }
+  .faq-item p:last-child { margin-bottom: 0; }
+
+  footer {
+    border-top: 3px solid var(--ink);
+    padding: 30px 0 44px;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1.5px;
+    color: var(--ink-faint);
+  }
+  footer .wrap { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+</style>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type": "Question", "name": "Why did my CPU limit shrink?", "acceptedAnswer": {"@type": "Answer", "text": "The node got busier — not an incident. Your limit is your request plus a fair share of whatever CPU the node hasn't promised to anyone else; as neighbors schedule onto the node, that share shrinks toward your request, which is guaranteed."}},
+    {"@type": "Question", "name": "I'm being throttled / I need more CPU. What do I do?", "acceptedAnswer": {"@type": "Answer", "text": "Raise your CPU request. It buys three things at once: more guaranteed schedulable capacity, a larger kernel share under contention, and a larger slice of node headroom. There is no way to get sustained large CPU by requesting little."}},
+    {"@type": "Question", "name": "Why is my limit what it is right now?", "acceptedAnswer": {"@type": "Answer", "text": "The pod spec is the source of truth: kubectl get pod shows the enforced limit, the kube-headroom.dev/status annotation explains the math, and every change emits a CPULimitAdjusted event."}},
+    {"@type": "Question", "name": "How do I opt a workload out?", "acceptedAnswer": {"@type": "Answer", "text": "Set the pod-template label kube-headroom.dev/mode: unmanaged. Enrollment itself is per namespace and is normally your platform team's call. Guaranteed and BestEffort pods are never managed."}},
+    {"@type": "Question", "name": "Can I cap my own ceiling?", "acceptedAnswer": {"@type": "Answer", "text": "Yes — annotate the pod with kube-headroom.dev/max-cpu: \"4\" and Headroom will never raise that pod's limit above 4 cores."}},
+    {"@type": "Question", "name": "My limit went up but my app isn't using it. Why?", "acceptedAnswer": {"@type": "Answer", "text": "Many runtimes size thread pools from the CPU count once at startup — JVM ergonomics, Go automaxprocs, BLAS pools — so a live-raised limit doesn't grow them. Set parallelism explicitly or see the CPU footguns catalog for per-runtime workarounds."}},
+    {"@type": "Question", "name": "Does Headroom change my requests, memory, scheduling, or bill?", "acceptedAnswer": {"@type": "Answer", "text": "No. Headroom only ever writes limits.cpu, live via in-place resize, with no restarts. Requests, memory, scheduling placement, and anything billed from requests are untouched."}},
+    {"@type": "Question", "name": "Do HPA and VPA still work?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. HPA keys off requests and is structurally unaffected (though unthrottled pods reveal true demand, so review thresholds). VPA composes when set to controlledValues: RequestsOnly — VPA owns requests, Headroom owns limits."}},
+    {"@type": "Question", "name": "What happens if the Headroom controller dies?", "acceptedAnswer": {"@type": "Answer", "text": "Limits freeze at their last values and the kernel's cpu.weight keeps sharing fairly. No failure mode is worse than not running Headroom at all."}}
+  ]
+}
+</script>
+</head>
+<body>
+
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="./">
+    <svg width="24" height="24" viewBox="0 0 100 100" aria-hidden="true"><line x1="14" y1="16" x2="86" y2="16" stroke="#5b3a8e" stroke-width="5" stroke-dasharray="8 7"/><rect x="20" y="44" width="20" height="42" fill="#14a89b"/><rect x="58" y="36" width="20" height="50" fill="#14a89b"/><rect x="58" y="24" width="20" height="8" fill="#14a89b" opacity=".85"/><rect x="20" y="55" width="58" height="14" fill="#14a89b"/></svg>
+    KUBE-HEADROOM <span class="tag">/ FAQ</span>
+  </a>
+  <div class="nav-links">
+    <a href="./">HOME</a>
+    <a href="tenants.html">APP TEAMS</a>
+    <a href="docs/">DOCS</a>
+    <a href="docs/tenant-guide.html">FULL GUIDE</a>
+  </div>
+</nav>
+
+<header class="hero">
+  <svg class="day-art" style="right:-30px; top:-10px; width:360px; height:250px" viewBox="0 0 360 250" aria-hidden="true">
+    <path d="M30 180 C 80 110, 140 90, 210 106 C 270 120, 305 100, 350 50 L 360 80 C 315 140, 260 168, 195 156 C 135 146, 90 166, 60 215 Z" fill="#14a89b" opacity=".85"/>
+    <path d="M60 60 L 104 36 L 86 80 L 134 56 L 116 100 L 164 76" fill="none" stroke="#5b3a8e" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="290" cy="180" r="8" fill="#ff2d95"/>
+    <circle cx="52" cy="130" r="5" fill="#ff7059"/>
+    <rect x="250" y="26" width="14" height="14" fill="#ffc233" transform="rotate(20 257 33)"/>
+  </svg>
+  <div class="wrap">
+    <p class="kicker">For app teams · quick answers</p>
+    <h1>Questions? <span class="swash">Good ones.</span></h1>
+    <p class="lede">Short answers to the things teams actually ask when their namespace runs under Headroom — each linking to the full story in the docs.</p>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <article class="faq-item" id="limit-shrank">
+      <h2><a href="#limit-shrank">Why did my CPU limit shrink?</a></h2>
+      <p>The node got busier — <strong>not an incident</strong>. Your limit is your request plus a fair share of whatever CPU the node hasn't promised to anyone else; as neighbors schedule onto the node, that share shrinks toward your request. Your request itself is guaranteed and untouched.</p>
+      <p>More: <a href="tenants.html">the contract</a> · <a href="docs/tenant-guide.html">tenant guide</a></p>
+    </article>
+
+    <article class="faq-item" id="throttled">
+      <h2><a href="#throttled">I'm being throttled / I need more CPU. What do I do?</a></h2>
+      <p><strong>Raise your CPU request</strong> — it's self-service and buys three things at once: more guaranteed schedulable capacity, a larger kernel share under contention, and a larger slice of node headroom. There is no way to get sustained large CPU by requesting little. For <em>what number</em> to request, run VPA in recommendation mode and read its suggestion.</p>
+      <p>More: <a href="docs/tenant-guide.html#i-m-being-throttled-i-need-more-cpu">tenant guide</a></p>
+    </article>
+
+    <article class="faq-item" id="why-this-limit">
+      <h2><a href="#why-this-limit">Why is my limit what it is right now?</a></h2>
+      <p>The pod spec is the source of truth — <code>kubectl get pod</code> shows the enforced limit, the <code>kube-headroom.dev/status</code> annotation explains the math (factor, node headroom, pod count), and every change emits a <code>CPULimitAdjusted</code> event.</p>
+      <p>More: <a href="docs/tenant-guide.html#what-you-ll-see">what you'll see</a></p>
+    </article>
+
+    <article class="faq-item" id="opt-out">
+      <h2><a href="#opt-out">How do I opt a workload out?</a></h2>
+      <p>Label the pod template <code>kube-headroom.dev/mode: unmanaged</code>. Namespace enrollment is your platform team's call; the pod label always wins for a single workload. Guaranteed QoS and BestEffort pods are never managed regardless.</p>
+      <p>More: <a href="docs/tenant-guide.html#opting-in-and-out">opting in and out</a></p>
+    </article>
+
+    <article class="faq-item" id="cap-ceiling">
+      <h2><a href="#cap-ceiling">Can I cap my own ceiling?</a></h2>
+      <p>Yes — annotate the pod: <code>kube-headroom.dev/max-cpu: "4"</code>. Headroom will never raise that pod's limit above 4 cores, useful for pinned-parallelism services that shouldn't be tempted with more.</p>
+      <p>More: <a href="docs/tenant-guide.html#cap-your-own-ceiling">cap your own ceiling</a></p>
+    </article>
+
+    <article class="faq-item" id="unused-headroom">
+      <h2><a href="#unused-headroom">My limit went up but my app isn't using it. Why?</a></h2>
+      <p>Many runtimes size their thread pools from a CPU count <strong>once at startup</strong> — JVM ergonomics, Go's <code>automaxprocs</code>, OpenMP/BLAS pools, most ML frameworks — so a live-raised limit doesn't grow them. Set your parallelism explicitly, or accept birth-limit sizing.</p>
+      <p>More: <a href="docs/cpu-footguns.html">the CPU footguns catalog</a> (per-runtime workarounds)</p>
+    </article>
+
+    <article class="faq-item" id="what-changes">
+      <h2><a href="#what-changes">Does Headroom change my requests, memory, scheduling, or bill?</a></h2>
+      <p>No. Headroom only ever writes <code>limits.cpu</code> — live, via in-place resize, no restarts. Requests, memory, placement, and anything billed from requests are untouched.</p>
+      <p>More: <a href="tenants.html">what changed / what never changes</a></p>
+    </article>
+
+    <article class="faq-item" id="hpa-vpa">
+      <h2><a href="#hpa-vpa">Do HPA and VPA still work?</a></h2>
+      <p>Yes. HPA computes against requests and is structurally unaffected — though unthrottled pods reveal true demand, so utilization can exceed 100% of request and HPA may scale out earlier (correct, but review thresholds). VPA composes cleanly when set to <code>controlledValues: RequestsOnly</code>: VPA owns requests, Headroom owns limits.</p>
+      <p>More: <a href="docs/tenant-guide.html#using-headroom-together-with-vpa">the VPA recipe</a> · <a href="docs/tenant-guide.html#a-note-on-hpa">HPA note</a></p>
+    </article>
+
+    <article class="faq-item" id="controller-dies">
+      <h2><a href="#controller-dies">What happens if the Headroom controller dies?</a></h2>
+      <p>Limits freeze at their last values, and the kernel's <code>cpu.weight</code> keeps sharing CPU fairly by requests. <strong>No failure mode is worse than not running Headroom at all</strong> — that property is structural, not aspirational.</p>
+      <p>More: <a href="docs/design.html">design doc</a> (safety invariants)</p>
+    </article>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <svg width="16" height="16" viewBox="0 0 100 100" aria-hidden="true"><line x1="14" y1="16" x2="86" y2="16" stroke="#5b3a8e" stroke-width="6" stroke-dasharray="9 8"/><rect x="20" y="44" width="20" height="42" fill="#14a89b"/><rect x="58" y="36" width="20" height="50" fill="#14a89b"/><rect x="58" y="24" width="20" height="8" fill="#14a89b" opacity=".85"/><rect x="20" y="55" width="58" height="14" fill="#14a89b"/></svg>
+    KUBE-HEADROOM · SATURDAY MORNING PROGRAMMING · NO DUMB QUESTIONS, ONLY UNDOCUMENTED ONES
+  </div>
+</footer>
+</body>
+</html>
