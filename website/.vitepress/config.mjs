@@ -89,6 +89,7 @@ export default defineConfig({
           { text: "Kubernetes conventions", link: "/development/kubernetes-conventions" },
           { text: "Documentation standards", link: "/development/documentation-standards" },
           { text: "Technical debt policy", link: "/development/technical-debt" },
+          { text: "Releasing", link: "/development/releasing" },
         ],
       },
     ],

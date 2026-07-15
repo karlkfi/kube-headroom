@@ -35,8 +35,9 @@ Start with the page that matches your role:
   [testing](development/testing.md),
   [the kind inner loop](development/kind-iteration.md),
   [Kubernetes conventions](development/kubernetes-conventions.md),
-  [documentation standards](development/documentation-standards.md), and the
-  [technical debt policy](development/technical-debt.md).
+  [documentation standards](development/documentation-standards.md), the
+  [technical debt policy](development/technical-debt.md), and
+  [releasing](development/releasing.md).
 
 Work is tracked in the repo-local backlog,
 [docs/STATUS.md](https://github.com/karlkfi/kube-headroom/blob/main/docs/STATUS.md).

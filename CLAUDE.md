@@ -16,6 +16,10 @@ docs: `docs/runbook.md` (operators), `docs/tenant-guide.md` (app teams),
 - **Licensing** — Apache-2.0 (root `LICENSE`, copyright Karl Isenberg). Do
   **not** add per-file license/copyright headers: `hack/boilerplate.go.txt` is
   intentionally empty so generated files stay header-free; keep it that way.
+- **Releases** — a `v*` tag runs `.github/workflows/release.yml` (image →
+  charts → GitHub Release). Process and verification:
+  `docs/development/releasing.md`. Key invariant: image tags are the bare
+  version (`0.1.0`, no `v`) to match the stamped chart `appVersion`.
 
 ## Backlog
 
