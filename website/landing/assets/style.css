@@ -149,6 +149,12 @@ code {
   .hero-cols { grid-template-columns: 1fr; }
   .hero { padding-bottom: 240px; }
 }
+/* Narrow screens: the nav wraps to multiple rows, so an absolute overlay
+   would run into the hero. Put it in flow and trim the hero's top padding. */
+@media (max-width: 720px) {
+  .nav { position: static; }
+  .hero { padding-top: 40px; }
+}
 
 .wordmark {
   font-family: var(--impact);
