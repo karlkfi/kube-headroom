@@ -4,7 +4,7 @@
 events, applied via the in-place pod resize subresource.**
 
 [github.com/karlkfi/kube-headroom](https://github.com/karlkfi/kube-headroom) ·
-[karlkfi.github.io/kube-headroom](https://karlkfi.github.io/kube-headroom/)
+[kube-headroom.dev](https://kube-headroom.dev/)
 
 On an empty node a pod's CPU limit approaches the node's allocatable CPU (no
 pointless throttling). As the node fills with requests, limits converge toward
