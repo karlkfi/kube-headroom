@@ -17,6 +17,11 @@
           "description": "Defaults to the chart appVersion when empty.",
           "type": "string"
         },
+        "digest": {
+          "description": "Immutable image pin (takes precedence over tag when set).",
+          "type": "string",
+          "pattern": "^$|^sha256:[0-9a-f]{64}$"
+        },
         "pullPolicy": {
           "type": "string",
           "enum": ["Always", "IfNotPresent", "Never"]

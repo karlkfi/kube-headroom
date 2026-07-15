@@ -1,4 +1,5 @@
-{{- if .Values.podDisruptionBudget.enable }}
+{{- /* replicas gate: a 1-replica PDB with minAvailable:1 wedges node drains */ -}}
+{{- if and .Values.podDisruptionBudget.enable (gt (int .Values.replicas) 1) }}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:

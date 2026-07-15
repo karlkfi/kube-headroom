@@ -1,9 +1,12 @@
 # Default values for the kube-headroom operator chart.
 
 # -- Manager container image. tag defaults to the chart appVersion when empty.
+# digest (e.g. "sha256:abc...") pins the image immutably and takes precedence
+# over tag when set.
 image:
   repository: ghcr.io/karlkfi/kube-headroom
   tag: ""
+  digest: ""
   pullPolicy: IfNotPresent
 
 # imagePullSecrets referenced by the manager ServiceAccount.
@@ -60,7 +63,8 @@ rbac:
   aggregationRoles: true
 
 # PodDisruptionBudget keeping >=1 webhook-serving replica up during voluntary
-# disruptions. Only meaningful with replicas >= 2.
+# disruptions. Rendered only when replicas > 1 — a single-replica PDB with
+# minAvailable: 1 permanently blocks node drains.
 podDisruptionBudget:
   enable: true
   minAvailable: 1
