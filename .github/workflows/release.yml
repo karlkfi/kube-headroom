@@ -1,0 +1,132 @@
+name: Release
+
+# On a version tag: build and push the multi-arch manager image, publish both
+# Helm charts to ghcr as OCI artifacts, and create the GitHub Release. Jobs are
+# ordered image -> charts -> release so a chart is never published pointing at
+# an image that failed to build.
+#
+# INVARIANT: the image is tagged with the bare version (v1.2.3 -> 1.2.3) —
+# exactly what `helm package --app-version` stamps into the operator chart,
+# whose image.tag defaults to .Chart.AppVersion (templates/_helpers.tpl). If
+# the image tag ever grows a `v` prefix, a default `helm install` pulls a
+# nonexistent image.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+jobs:
+  push-image:
+    name: Build and push multi-arch image
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Derive image version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Log in to ghcr
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Deliberately not `make docker-buildx`: its recipe lines are `-`-prefixed
+      # (errors ignored), so a failed build would not fail this job.
+      - name: Build and push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/karlkfi/kube-headroom:${{ steps.version.outputs.version }}
+            ghcr.io/karlkfi/kube-headroom:latest
+
+  push-charts:
+    name: Package and push charts to ghcr
+    needs: push-image
+    permissions:
+      contents: read
+      packages: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+
+      - name: Derive chart version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build the pinned helm binary
+        run: make helm
+
+      - name: Log in to ghcr (Helm OCI)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            ./bin/helm registry login ghcr.io \
+              --username "${{ github.actor }}" --password-stdin
+
+      - name: Package and push both charts
+        run: make helm-push CHART_VERSION=${{ steps.version.outputs.version }}
+
+  github-release:
+    name: Create GitHub Release
+    needs: [push-image, push-charts]
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Create release with install notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VERSION="${TAG#v}"
+          cat > notes.md <<EOF
+          ## Install
+
+          \`\`\`sh
+          helm upgrade --install kube-headroom-crds \\
+            oci://ghcr.io/karlkfi/charts/kube-headroom-crds --version ${VERSION}
+
+          helm upgrade --install kube-headroom \\
+            oci://ghcr.io/karlkfi/charts/kube-headroom --version ${VERSION} \\
+            --namespace kube-headroom-system --create-namespace
+          \`\`\`
+
+          Image: \`ghcr.io/karlkfi/kube-headroom:${VERSION}\` (linux/amd64, linux/arm64).
+          The operator starts in \`dryRun: true\` — see the
+          [runbook](https://github.com/karlkfi/kube-headroom/blob/${TAG}/docs/runbook.md)
+          for preflight and rollout.
+          EOF
+          gh release create "$TAG" --verify-tag --title "$TAG" \
+            --generate-notes --notes-file notes.md
