@@ -18,7 +18,7 @@ Decide explicitly — un-triaged debt is the kind that hurts.
   trigger is just declining with extra steps.
 - **Decline** — a deliberate non-goal. Say so, once, in the canonical place (the
   design doc's out-of-scope list or a plan doc), so it doesn't get re-proposed.
-  CPU-only, requests-driven, no license-until-asked are declines, not
+  CPU-only, requests-driven, no per-file license headers are declines, not
   oversights.
 
 When unsure between flag and defer: flag is "we will do this, unscheduled,"

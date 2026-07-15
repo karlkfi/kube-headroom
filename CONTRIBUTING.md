@@ -65,6 +65,8 @@ are expected not to regress security posture; CI runs `govulncheck` on every PR.
 
 ## Licensing
 
-This repo intentionally has **no license** yet — do not add license/copyright
-headers or a `LICENSE` file until the maintainer asks. `hack/boilerplate.go.txt`
-is deliberately empty so generated files stay header-free.
+The project is licensed under the [Apache License 2.0](LICENSE). By
+contributing, you agree that your contributions are licensed under the same
+terms (inbound = outbound). Do **not** add per-file license/copyright headers —
+the root `LICENSE` file covers the repo, and `hack/boilerplate.go.txt` is
+deliberately empty so generated files stay header-free.
