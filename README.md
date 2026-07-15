@@ -12,9 +12,10 @@ each pod's request (predictable, request-proportional fair sharing). The limit
 is derived from **requests** (booked capacity), not live usage, so it changes
 only on scheduling events — deterministic, low-churn, and debuggable.
 
-> **Status: early development.** The policy core is implemented and tested; the
-> controller is in progress and Headroom is **not yet deployable**. Roadmap and
-> priorities live in [docs/STATUS.md](docs/STATUS.md).
+> **Status: v0.1.0 released** — installable via the Helm charts (see the
+> [operator runbook](docs/runbook.md)); the API is `v1alpha1` and defaults to
+> **`dryRun: true`**. Roadmap and priorities live in
+> [docs/STATUS.md](docs/STATUS.md).
 
 ## The problem
 

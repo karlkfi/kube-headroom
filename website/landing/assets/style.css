@@ -73,6 +73,39 @@ code {
   padding: 1px 6px;
 }
 
+/* ============ ANNOUNCE BANNER ============ */
+/* Fixed single-line height so the absolutely-positioned nav below can offset
+   by a known amount; long text truncates instead of wrapping. */
+.announce {
+  display: block;
+  height: 36px;
+  line-height: 36px;
+  padding: 0 24px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--body);
+}
+.announce:hover { color: var(--cyan); text-decoration: none; }
+.announce-tag {
+  display: inline-block;
+  margin-right: 10px;
+  padding: 1px 7px;
+  border-radius: 3px;
+  background: var(--amber);
+  color: var(--ground);
+  font-size: 10px;
+  letter-spacing: 2px;
+  font-weight: 700;
+}
+.announce + .nav { top: 36px; }
+
 /* ============ NAV ============ */
 .nav {
   position: absolute;
