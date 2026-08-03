@@ -5,12 +5,14 @@ on:
     paths:
       - "website/**"
       - "docs/**"
+      - "scripts/check-site-metadata.py"
       - ".github/workflows/website.yml"
   push:
     branches: [main]
     paths:
       - "website/**"
       - "docs/**"
+      - "scripts/check-site-metadata.py"
       - ".github/workflows/website.yml"
   workflow_dispatch:
 
@@ -38,6 +40,10 @@ jobs:
           mkdir -p dist/docs
           cp -r website/landing/. dist/
           cp -r website/.vitepress/dist/. dist/docs/
+      # Runs on the assembled tree, not the sources: the docs half of the site
+      # only grows its canonical and description tags at render time.
+      - name: Check site metadata
+        run: make site-metadata
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

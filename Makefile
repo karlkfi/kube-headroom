@@ -115,6 +115,10 @@ shellcheck: ## Lint shell scripts and git hooks (skips locally if shellcheck is 
 doc-links: ## Check Markdown for broken relative links/anchors (offline, no external deps).
 	python3 scripts/check-doc-links.py
 
+.PHONY: site-metadata
+site-metadata: ## Check an assembled site dir for canonicals and unique meta descriptions (DIST=dist).
+	python3 scripts/check-site-metadata.py $(or $(DIST),dist)
+
 .PHONY: plan-hygiene
 plan-hygiene: ## Check plan docs are STATUS-referenced or archived, and unreferenced by Go code.
 	bash scripts/lint-plan-hygiene.sh
