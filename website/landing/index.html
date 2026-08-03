@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Headroom — CPU limits that resize to share unrequested capacity</title>
-<meta name="description" content="A Kubernetes controller that resizes container CPU limits to share each node's unrequested capacity — recomputed on scheduling events, applied via in-place pod resize. No restarts, no metrics pipeline, no oscillation.">
+<meta name="description" content="A Kubernetes controller that resizes container CPU limits to share each node's unrequested capacity — applied live via in-place pod resize, no restarts.">
 <meta property="og:title" content="Headroom — CPU limits that resize to share unrequested capacity">
 <meta property="og:description" content="Your ceiling is your request — plus your share of everything the node isn't using. Requests-driven, CPU-only by design, safe by construction.">
 <meta property="og:type" content="website">
@@ -18,6 +18,29 @@
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <link rel="stylesheet" href="assets/style.css">
+<!-- Dual-typed: Headroom is both a deployable app and a source repo, and the
+     two types carry disjoint useful properties (offers/operatingSystem vs
+     codeRepository/programmingLanguage). softwareVersion tracks the release —
+     it updates with the announce banner below, per docs/development/releasing.md. -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": ["SoftwareApplication", "SoftwareSourceCode"],
+  "name": "Headroom",
+  "alternateName": "kube-headroom",
+  "description": "A Kubernetes controller that resizes container CPU limits to share each node's unrequested capacity — applied live via in-place pod resize, no restarts.",
+  "url": "https://kube-headroom.dev/",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Kubernetes 1.35+",
+  "runtimePlatform": "Kubernetes",
+  "programmingLanguage": "Go",
+  "codeRepository": "https://github.com/karlkfi/kube-headroom",
+  "softwareVersion": "0.1.0",
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "author": {"@type": "Person", "name": "Karl Isenberg"},
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}
+}
+</script>
 </head>
 <body>
 

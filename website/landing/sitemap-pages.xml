@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The hand-written landing pages. Add a row here when adding a page to
+     website/landing/; docs pages are covered by /docs/sitemap.xml instead.
+     404.html is omitted deliberately — it carries robots: noindex.
+     No <lastmod>: it is optional, and a hand-maintained one goes stale. -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://kube-headroom.dev/</loc>
+  </url>
+  <url>
+    <loc>https://kube-headroom.dev/faq.html</loc>
+  </url>
+  <url>
+    <loc>https://kube-headroom.dev/tenants.html</loc>
+  </url>
+</urlset>
