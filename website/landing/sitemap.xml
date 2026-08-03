@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Index over the two halves of the site: the hand-written landing pages and
+     the VitePress docs subsite, which generates its own sitemap at build time
+     (see sitemap.hostname in website/.vitepress/config.mjs). -->
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>https://kube-headroom.dev/sitemap-pages.xml</loc>
+  </sitemap>
+  <sitemap>
+    <loc>https://kube-headroom.dev/docs/sitemap.xml</loc>
+  </sitemap>
+</sitemapindex>
