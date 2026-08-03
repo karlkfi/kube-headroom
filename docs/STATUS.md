@@ -12,7 +12,6 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q45"></a>Q45 | Pin `website.yml` actions by SHA | `infra` `security` | 🔲 | S | Only workflow still on floating tags (`checkout`, `setup-node`, `upload-pages-artifact`, `deploy-pages`); the rest pin by SHA. Its `deploy` job runs only on `main`, so Pages majors land unexercised. |
 | <a id="Q46"></a>Q46 | Stop hardcoding the release version in the landing page | `docs` `infra` `retro` | 🔲 | S | 7 `0.1.0` strings on 5 lines of `website/landing/index.html`: JSON-LD `softwareVersion`, announce banner, ON AIR panel. One missed spot ships a stale version. Stamp it at build time. |
 
 ## Deferred
