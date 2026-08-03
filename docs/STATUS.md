@@ -6,12 +6,13 @@ the top of the Queue.
 **Status:** 🔲 ready · 🚫 blocked
 **Size:**   S = one session/PR · M = 2–3 sessions · L = needs a plan doc under `docs/plan/`
 **Labels:** `policy` `controller` `webhook` `observability` `tests` `docs` `infra` `security` `spike`
-**Next ID:** Q45
+**Next ID:** Q46
 
 ## Queue
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
+| <a id="Q45"></a>Q45 | Pin `website.yml` actions by SHA | `infra` `security` | 🔲 | S | Only workflow still on floating tags (`checkout`, `setup-node`, `upload-pages-artifact`, `deploy-pages`); the rest pin by SHA. Its `deploy` job runs only on `main`, so Pages majors land unexercised. |
 
 ## Deferred
 
