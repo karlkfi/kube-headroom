@@ -20,8 +20,9 @@
 <link rel="stylesheet" href="assets/style.css">
 <!-- Dual-typed: Headroom is both a deployable app and a source repo, and the
      two types carry disjoint useful properties (offers/operatingSystem vs
-     codeRepository/programmingLanguage). softwareVersion tracks the release —
-     it updates with the announce banner below, per docs/development/releasing.md. -->
+     codeRepository/programmingLanguage). The version and announcement tokens
+     below are stamped from website/release.json by scripts/stamp-landing.py at
+     build time; bump that file, not this one, per docs/development/releasing.md. -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -35,7 +36,7 @@
   "runtimePlatform": "Kubernetes",
   "programmingLanguage": "Go",
   "codeRepository": "https://github.com/karlkfi/kube-headroom",
-  "softwareVersion": "0.1.0",
+  "softwareVersion": "{{VERSION}}",
   "license": "https://www.apache.org/licenses/LICENSE-2.0",
   "author": {"@type": "Person", "name": "Karl Isenberg"},
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}
@@ -44,9 +45,9 @@
 </head>
 <body>
 
-<a class="announce" href="docs/news/2026-07-headroom-v0.1.0.html">
+<a class="announce" href="{{ANNOUNCEMENT}}">
   <span class="announce-tag">NEW</span>
-  Headroom v0.1.0 — first public release, Apache-2.0. Read the announcement →
+  Headroom v{{VERSION}} — first public release, Apache-2.0. Read the announcement →
 </a>
 
 <nav class="nav" aria-label="Main">
@@ -313,8 +314,8 @@
     <div class="wrap">
       <h2 id="status-h" class="sr-only">Project status</h2>
       <div class="card">
-        <h3><span aria-hidden="true">▮▮</span> ON AIR · v0.1.0</h3>
-        <p>Headroom <a href="docs/news/2026-07-headroom-v0.1.0.html">v0.1.0 is out</a> — the first public release, Apache-2.0. The policy core is covered by table + property tests for every design invariant, and the controller installs via two Helm charts (<a href="https://github.com/karlkfi/kube-headroom/releases/tag/v0.1.0">release notes</a>).</p>
+        <h3><span aria-hidden="true">▮▮</span> ON AIR · v{{VERSION}}</h3>
+        <p>Headroom <a href="{{ANNOUNCEMENT}}">v{{VERSION}} is out</a> — the first public release, Apache-2.0. The policy core is covered by table + property tests for every design invariant, and the controller installs via two Helm charts (<a href="https://github.com/karlkfi/kube-headroom/releases/tag/v{{VERSION}}">release notes</a>).</p>
         <p>It defaults to <code>dryRun: true</code> — computing targets, annotating pods, and emitting metrics without issuing a single resize until you flip the switch. Start with the <a href="docs/runbook.html">runbook preflight</a>, follow priorities in the <a href="https://github.com/karlkfi/kube-headroom/blob/main/docs/STATUS.md">backlog</a>, or star the <a href="https://github.com/karlkfi/kube-headroom">repo</a>.</p>
       </div>
     </div>
