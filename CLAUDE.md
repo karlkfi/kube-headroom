@@ -60,7 +60,11 @@ kubebuilder v4 project. API group / annotation prefix: **`kube-headroom.dev`**
   (not Go, not the Makefile): `website/landing/` is hand-written HTML owning
   the site root, and `website/.vitepress/` builds `docs/**` into the `/docs/`
   subsite. `.github/workflows/website.yml` assembles the two into one `dist/`
-  and deploys to GitHub Pages. Requires Node 22 + `npm ci` in `website/` —
+  and deploys to GitHub Pages. The landing half is *stamped*, not copied:
+  `make site-landing` substitutes `{{VERSION}}` and `{{ANNOUNCEMENT}}` from
+  `website/release.json` and rejects a bare version written into the HTML, so
+  bump `release.json` at release time and never a version literal. Requires
+  Node 22 + `npm ci` in `website/` —
   without it there is no local preview and changes can only be verified from
   CI's build artifact.
 - `tools/` — separate Go module (`//go:build tools` pattern) pinning the
@@ -130,6 +134,7 @@ kubecontext.
 | Install website deps (Node 22) | `cd website && npm ci` |
 | Preview the docs subsite | `cd website && npm run docs:dev` |
 | Build the docs subsite | `cd website && npm run docs:build` |
+| Assemble the landing pages, stamping the release | `make site-landing DIST=dist` |
 | Check a built site's SEO metadata | `make site-metadata DIST=dist` |
 
 **Verify a change** end-to-end before opening a PR: `make test` for anything

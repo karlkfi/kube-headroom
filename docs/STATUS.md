@@ -12,7 +12,6 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q46"></a>Q46 | Stop hardcoding the release version in the landing page | `docs` `infra` `retro` | 🔲 | S | 7 `0.1.0` strings on 5 lines of `website/landing/index.html`: JSON-LD `softwareVersion`, announce banner, ON AIR panel. One missed spot ships a stale version. Stamp it at build time. |
 | <a id="Q47"></a>Q47 | Gate workflow hygiene in CI | `infra` `security` `retro` | 🔲 | S | Nothing enforces what Q45 fixed by hand: every `uses:` SHA-pinned, every checkout `persist-credentials: false`. Both drifted unnoticed in `website.yml`. Add a script + `checks.yml` job. |
 
 ## Deferred

@@ -17,11 +17,15 @@ workflow preserves this; don't "fix" it.
 ## Steps
 
 1. **Prep the announcement first** — a news post under [`docs/news/`](../news/)
-   (dated file + entry in `index.md` and the VitePress sidebar), plus any
-   landing-page copy updates. Open the PR but **hold the merge until after the
-   tag**: the site must never advertise a release that doesn't exist. The
-   release URL is predictable (`…/releases/tag/vX.Y.Z`), so content can be
-   final beforehand.
+   (dated file + entry in `index.md` and the VitePress sidebar), the matching
+   `version` and `announcement` in
+   [`website/release.json`](../../website/release.json), plus any landing-page
+   copy updates. The landing page never spells the version out:
+   `scripts/stamp-landing.py` substitutes `release.json` into it while
+   assembling `dist/`, and fails the build on a bare version left in the
+   sources. Open the PR but **hold the merge until after the tag**: the site
+   must never advertise a release that doesn't exist. The release URL is
+   predictable (`…/releases/tag/vX.Y.Z`), so content can be final beforehand.
 
 2. **Tag the tip of `main`** (all release PRs merged, CI green):
 
