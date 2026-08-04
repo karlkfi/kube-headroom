@@ -77,7 +77,7 @@ test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
 
 .PHONY: check
-check: lint verify-generate verify-vendor verify-helm-sync helm-lint helm-template backlog-lint shellcheck doc-links test ## Run all fast pre-review checks (mirrors CI). Green here == green in CI.
+check: lint verify-generate verify-vendor verify-helm-sync helm-lint helm-template backlog-lint shellcheck doc-links workflow-hygiene test ## Run all fast pre-review checks (mirrors CI). Green here == green in CI.
 
 .PHONY: vendor
 vendor: ## Refresh go.mod/go.sum and the checked-in vendor/ tree.
@@ -114,6 +114,10 @@ shellcheck: ## Lint shell scripts and git hooks (skips locally if shellcheck is 
 .PHONY: doc-links
 doc-links: ## Check Markdown for broken relative links/anchors (offline, no external deps).
 	python3 scripts/check-doc-links.py
+
+.PHONY: workflow-hygiene
+workflow-hygiene: ## Check workflows pin actions by SHA and never persist checkout credentials.
+	python3 scripts/check-workflow-hygiene.py
 
 .PHONY: site-landing
 site-landing: ## Copy the landing pages into DIST (default dist/), stamping the release from website/release.json.

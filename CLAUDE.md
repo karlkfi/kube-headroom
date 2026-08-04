@@ -131,6 +131,7 @@ kubecontext.
 | e2e on a dedicated kind cluster | `make setup-test-e2e test-e2e` |
 | Apply the sample config | `kubectl apply -k config/samples` |
 | Lint the backlog | `bash scripts/lint-backlog.sh docs/STATUS.md` |
+| Check workflow supply-chain hygiene | `make workflow-hygiene` |
 | Install website deps (Node 22) | `cd website && npm ci` |
 | Preview the docs subsite | `cd website && npm run docs:dev` |
 | Build the docs subsite | `cd website && npm run docs:build` |
