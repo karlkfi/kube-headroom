@@ -12,7 +12,6 @@ the top of the Queue.
 
 | ID | Item | Labels | St | Sz | Notes |
 |---|---|---|---|---|---|
-| <a id="Q47"></a>Q47 | Gate workflow hygiene in CI | `infra` `security` `retro` | 🔲 | S | Nothing enforces what Q45 fixed by hand: every `uses:` SHA-pinned, every checkout `persist-credentials: false`. Both drifted unnoticed in `website.yml`. Add a script + `checks.yml` job. |
 
 ## Deferred
 

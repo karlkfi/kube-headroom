@@ -29,6 +29,7 @@ jobs:
       go: ${{ steps.filter.outputs.go }}
       shell: ${{ steps.filter.outputs.shell }}
       docs: ${{ steps.filter.outputs.docs }}
+      workflows: ${{ steps.filter.outputs.workflows }}
     steps:
       - name: Clone the code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -62,6 +63,10 @@ jobs:
               - 'scripts/check-doc-links.py'
               - 'scripts/lint-plan-hygiene.sh'
               - '.github/workflows/checks.yml'
+            workflows:
+              - '.github/workflows/**'
+              - '.github/actions/**'
+              - 'scripts/check-workflow-hygiene.py'
 
   generate-drift:
     name: Generated files up to date
@@ -134,6 +139,21 @@ jobs:
           persist-credentials: false
       - name: shellcheck
         run: make shellcheck
+
+  workflow-hygiene:
+    name: Workflow hygiene
+    needs: [changes]
+    if: needs.changes.outputs.workflows == 'true' || github.event_name == 'push'
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone the code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check actions are SHA-pinned and checkouts drop credentials
+        run: make workflow-hygiene
 
   doc-links:
     name: Doc links
