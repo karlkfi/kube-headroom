@@ -1,0 +1,72 @@
+# Optional: reject pods in Headroom-managed namespaces that have a long-running
+# container without a CPU request.
+#
+# Headroom caps only containers that request CPU (design §5.4, §6.3). A
+# request-less container in an otherwise-managed pod gets no limit and runs
+# unbounded — and a Docker-in-Docker or other sidecar that runs the pod's real
+# work is the usual way that happens. This policy closes the gap at admission so
+# every long-running container in a managed pod is one Headroom can cap.
+#
+# Requires Kubernetes >= 1.30 (ValidatingAdmissionPolicy is GA there); Headroom
+# itself needs >= 1.35. Not installed by the Helm charts — apply it yourself:
+#
+#   kubectl apply -k config/samples/admission-policy
+#
+# The binding matches the default enrollment label. If HeadroomConfig sets
+# spec.namespaceSelector, copy that selector into the binding. See
+# docs/runbook.md#require-cpu-requests for rollout (start with Warn).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kube-headroom-require-cpu-requests
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]
+  variables:
+    # The containers Headroom can cap: app containers plus restartable-init
+    # (native sidecar) containers. Regular init containers run to completion
+    # before the app starts and are never resized.
+    - name: longRunning
+      expression: >-
+        object.spec.containers +
+        (has(object.spec.initContainers)
+          ? object.spec.initContainers.filter(c, has(c.restartPolicy) && c.restartPolicy == 'Always')
+          : [])
+    - name: missing
+      expression: >-
+        variables.longRunning
+          .filter(c, !(has(c.resources) && has(c.resources.requests) &&
+            'cpu' in c.resources.requests &&
+            quantity(c.resources.requests['cpu']).isGreaterThan(quantity('0'))))
+          .map(c, c.name)
+  validations:
+    - expression: size(variables.missing) == 0
+      messageExpression: >-
+        'kube-headroom: app and sidecar containers in a managed namespace need a CPU
+        request > 0, or Headroom cannot cap them; missing on: ' + variables.missing.join(', ')
+      reason: Invalid
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: kube-headroom-require-cpu-requests
+spec:
+  policyName: kube-headroom-require-cpu-requests
+  # Deny enforces. For a trial run, use [Warn, Audit]: kubectl prints the
+  # message and the audit log records it, but the pod is admitted.
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kube-headroom.dev/mode: managed
+    # Pods that opt out of Headroom are not capped by it, so they are exempt.
+    objectSelector:
+      matchExpressions:
+        - key: kube-headroom.dev/mode
+          operator: NotIn
+          values: [unmanaged]

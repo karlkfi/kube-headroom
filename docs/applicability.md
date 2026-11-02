@@ -35,6 +35,7 @@ operational surface where ceilings are a requirement, not a preference.
 | NUMA-pinned / static CPU Manager nodes (common on dedicated training nodes) | **Excluded structurally** | In-place resize is prohibited under static CPU/Memory Manager policies; these nodes are typically dedicated and fully booked anyway. |
 | Guaranteed QoS pods | **Excluded structurally** | Resize cannot change QoS class; requests must stay == limits. |
 | BestEffort pods | **Excluded structurally** | Resources cannot be *added* via resize, and no request means no `cpu.weight` basis either. |
+| Request-less containers inside a managed pod (e.g. a Docker-in-Docker sidecar) | **Uncapped — enforce requests** | The pod is managed if its *total* request is positive, but a container with no request gets no limit and runs unbounded. Require requests at admission with the optional policy in the [runbook](runbook.md#require-cpu-requests). |
 | Runtimes that read CPU quota once at startup (JVM ergonomics, boot-time automaxprocs) | **Partial benefit — read the caveat** | The cgroup ceiling rises but the runtime's thread-pool sizing doesn't follow. Admission-time seeding gives a good birth limit; full benefit needs quota re-reading in the runtime. See the [tenant guide](tenant-guide.md#runtimes-that-read-cpu-quota-once-at-startup). |
 | Windows pods | **Excluded structurally** | In-place resize unsupported. |
 

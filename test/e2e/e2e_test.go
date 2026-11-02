@@ -324,7 +324,9 @@ var _ = Describe("Manager", Ordered, func() {
 
 	// Headroom's own design §10 exit criteria run inside this same Ordered
 	// Describe so they reuse the already-deployed controller-manager. The specs
-	// and their helpers live in headroom_test.go.
+	// and their helpers live in headroom_test.go. The admission-policy specs run
+	// first and remove their policy afterwards, so it never gates headroomSpecs.
+	admissionPolicySpecs()
 	headroomSpecs()
 })
 
