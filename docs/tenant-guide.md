@@ -59,6 +59,24 @@ metadata:
 Pods that are Guaranteed QoS, BestEffort, or have no CPU request are never
 managed regardless of labels (see [applicability](applicability.md)).
 
+## Every container that does work needs a CPU request
+
+Headroom caps **containers**, and only the ones that request CPU. A managed pod
+can hold a container with no CPU request; that container gets no limit and runs
+unbounded, while the rest of the pod is managed normally. Nothing warns you.
+
+The usual way to hit this is a sidecar that runs the real work. A CI pod with a
+job container that requests 16 CPUs and a Docker-in-Docker sidecar that requests
+nothing gets a ceiling on the job container — but the build runs inside
+containers the sidecar starts, under the sidecar's cgroup, so the build is
+uncapped. The same goes for any sidecar that runs a build daemon, a proxy doing
+heavy work, or a data loader.
+
+Give every app and sidecar container that does real work a CPU request sized for
+that work. Your platform team may enforce this with an admission policy, in which
+case a pod missing a request is rejected and the error names the container; for
+a Deployment or Job, look for a `FailedCreate` event on its ReplicaSet or Job.
+
 ## "I'm being throttled / I need more CPU"
 
 If you are throttled, the node is booked and your ceiling has collapsed toward

@@ -1,0 +1,5 @@
+# Optional admission policy, deliberately not listed in ../kustomization.yaml:
+# applying the samples must not start rejecting pods. See
+# require-cpu-requests.yaml for what it enforces.
+resources:
+- require-cpu-requests.yaml

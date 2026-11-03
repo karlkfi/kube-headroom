@@ -222,7 +222,7 @@ The unit of reconciliation is the **node**, not the pod — every scheduling eve
 
 ### 6.3 Pod eligibility
 
-A pod is managed iff **all** of: its namespace is labeled `kube-headroom.dev/mode: managed` (or matched by `spec.namespaceSelector`); the pod itself does not set `kube-headroom.dev/mode: unmanaged`; QoS class Burstable; every app container has a CPU **request > 0**; not on a Windows node or a node with static CPU/Memory Manager policy (detect via node labels/config, plus handle `Infeasible` defensively); pod not owned by anything in an operator-configured exclusion list (kube-system excluded by default).
+A pod is managed iff **all** of: its namespace is labeled `kube-headroom.dev/mode: managed` (or matched by `spec.namespaceSelector`); the pod itself does not set `kube-headroom.dev/mode: unmanaged`; QoS class Burstable; the pod's total CPU **request > 0**, summed over app and restartable-init (sidecar) containers; no container whose CPU `resizePolicy` is `RestartContainer` (§9.4.2); not on a Windows node or a node with static CPU/Memory Manager policy (detect via node labels/config, plus handle `Infeasible` defensively); pod not owned by anything in an operator-configured exclusion list (kube-system excluded by default).
 
 The `mode` gate uses **enum keywords** (`managed`/`unmanaged`), not booleans, so an
 unquoted YAML 1.1 token (`true`/`yes`) cannot silently coerce; it is
@@ -235,6 +235,17 @@ limit on first reconcile. The hard gate that remains is **CPU request > 0**:
 adding a limit to a BestEffort pod (no request) is refused by the apiserver. The
 Phase 2 webhook (§6.5) remains useful only for pods too short-lived for the
 controller to reach in time.
+
+The request gate is **pod-level, not per-container**. A managed pod may contain a
+container with no CPU request; that container receives no limit (§5.4, it has no
+burst basis) and so runs **uncapped** while the rest of the pod is managed. This
+is deliberate: rejecting the whole pod would leave its request-bearing
+containers unmanaged too, which is strictly worse. It is also an escape: a
+Docker-in-Docker sidecar with no request, which runs the pod's real work in the
+containers it starts, sits entirely outside the ceiling. Closing it is platform
+policy, not controller logic — the optional admission policy at
+[`config/samples/admission-policy/`](https://github.com/karlkfi/kube-headroom/tree/main/config/samples/admission-policy)
+rejects such pods at CREATE ([runbook](runbook.md#require-cpu-requests)).
 
 ### 6.4 Resize outcome handling
 

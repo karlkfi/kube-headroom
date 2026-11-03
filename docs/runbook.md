@@ -47,6 +47,11 @@ properties; the ResourceQuota one is the sharp edge.
   Default-mode VPA (`RequestsAndLimits`) scales limits and conflicts directly —
   exclude those pods. See the [tenant guide](tenant-guide.md#vpa) for the
   coexistence recipe.
+- **Containers without a CPU request are never capped.** Headroom manages a pod
+  whose *total* request is positive, and caps only the containers that carry a
+  request. A request-less sidecar in a managed pod runs unbounded. Decide whether
+  to [require CPU requests at admission](#require-cpu-requests) before enrolling
+  namespaces that run CI.
 
 ---
 
@@ -126,6 +131,66 @@ namespace at a time.
 set `dryRun: true` again (stops all patching; limits freeze at their last
 values), or remove the namespace label (the namespace's pods stop being managed;
 their current limits stay put — Headroom never *removes* a limit).
+
+---
+
+## Requiring CPU requests (optional)
+
+<a id="require-cpu-requests"></a>
+Headroom's ceiling covers only containers that request CPU. A container with no
+request in an otherwise-managed pod gets no limit at all, and nothing reports it:
+the pod shows as managed, its other containers get their limits, and the
+request-less one runs unbounded (design §6.3).
+
+The common way to hit this is a sidecar that runs the pod's real work. A CI pod
+whose job container requests 16 CPUs and whose Docker-in-Docker sidecar requests
+nothing gets a ceiling on the job container, but the build runs in containers
+the sidecar starts, which sit under the sidecar's cgroup. The build is uncapped.
+Runtimes that size thread pools from the host CPU count make it worse: on a
+256-CPU node a numeric library sizes its thread pool from all 256 CPUs it sees,
+inside that unbounded cgroup.
+
+The controller does not reject or rewrite such pods; that is policy, and it
+belongs to the platform. Headroom ships an **opt-in** `ValidatingAdmissionPolicy`
+that rejects, at CREATE, any pod in a managed namespace with an app or sidecar
+(restartable-init) container whose CPU request is missing or zero:
+
+- [`config/samples/admission-policy/require-cpu-requests.yaml`](https://github.com/karlkfi/kube-headroom/blob/main/config/samples/admission-policy/require-cpu-requests.yaml)
+
+It needs Kubernetes ≥ 1.30 (`ValidatingAdmissionPolicy` is GA there), which
+Headroom's own 1.35 floor already satisfies. The Helm charts do not install it.
+
+1. **Match your enrollment.** The binding selects namespaces labeled
+   `kube-headroom.dev/mode: managed` and exempts pods labeled
+   `kube-headroom.dev/mode: unmanaged`. If your `HeadroomConfig` sets
+   `spec.namespaceSelector`, copy that selector into the binding's
+   `matchResources.namespaceSelector`.
+2. **Trial it with `Warn`.** Set the binding's `validationActions` to
+   `[Warn, Audit]` and apply it:
+
+   ```sh
+   kubectl apply -k config/samples/admission-policy
+   ```
+
+   Every violating pod is still admitted, but `kubectl` prints the policy's
+   message and the audit log records it, which gives you the list of workloads to
+   fix.
+3. **Enforce with `Deny`.** Restore `validationActions: [Deny]` once the warnings
+   stop. A rejected pod created by a controller shows up as a `FailedCreate`
+   event on its ReplicaSet, Job, or StatefulSet rather than as an error to the
+   person who applied the Deployment, so tell tenants where to look.
+
+The policy also rejects BestEffort pods in managed namespaces, since they have no
+request on any container and Headroom cannot cap them either. Regular
+(run-to-completion) init containers are not checked: Headroom never resizes them.
+
+**No mutating variant ships.** A `MutatingAdmissionPolicy` could inject a default
+request instead of rejecting, but it is GA only from Kubernetes 1.36 (beta and
+off by default in 1.35, Headroom's floor), and a small default is the wrong fix
+anyway: a 100m default request on a dind sidecar makes the sidecar managed with a
+ceiling of at most 1 CPU (100m × the default `maxMultiplier` of 10), so the build
+that ran there is throttled instead of unbounded. The request has to be sized by
+the team that knows where the work runs, which is what rejection forces.
 
 ---
 

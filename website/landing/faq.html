@@ -159,6 +159,7 @@
     {"@type": "Question", "name": "I'm being throttled / I need more CPU. What do I do?", "acceptedAnswer": {"@type": "Answer", "text": "Raise your CPU request. It buys three things at once: more guaranteed schedulable capacity, a larger kernel share under contention, and a larger slice of node headroom. There is no way to get sustained large CPU by requesting little."}},
     {"@type": "Question", "name": "Why is my limit what it is right now?", "acceptedAnswer": {"@type": "Answer", "text": "The pod spec is the source of truth: kubectl get pod shows the enforced limit, the kube-headroom.dev/status annotation explains the math, and every change emits a CPULimitAdjusted event."}},
     {"@type": "Question", "name": "How do I opt a workload out?", "acceptedAnswer": {"@type": "Answer", "text": "Set the pod-template label kube-headroom.dev/mode: unmanaged. Enrollment itself is per namespace and is normally your platform team's call. Guaranteed and BestEffort pods are never managed."}},
+    {"@type": "Question", "name": "Does Headroom cap my sidecars?", "acceptedAnswer": {"@type": "Answer", "text": "Only the ones that request CPU. A container with no CPU request gets no limit and runs unbounded, even inside a managed pod. A Docker-in-Docker sidecar that runs your build is the common case: give it a request sized for the build."}},
     {"@type": "Question", "name": "Can I cap my own ceiling?", "acceptedAnswer": {"@type": "Answer", "text": "Yes — annotate the pod with kube-headroom.dev/max-cpu: \"4\" and Headroom will never raise that pod's limit above 4 cores."}},
     {"@type": "Question", "name": "My limit went up but my app isn't using it. Why?", "acceptedAnswer": {"@type": "Answer", "text": "Many runtimes size thread pools from the CPU count once at startup — JVM ergonomics, Go automaxprocs, BLAS pools — so a live-raised limit doesn't grow them. Set parallelism explicitly or see the CPU footguns catalog for per-runtime workarounds."}},
     {"@type": "Question", "name": "Does Headroom change my requests, memory, scheduling, or bill?", "acceptedAnswer": {"@type": "Answer", "text": "No. Headroom only ever writes limits.cpu, live via in-place resize, with no restarts. Requests, memory, scheduling placement, and anything billed from requests are untouched."}},
@@ -222,6 +223,12 @@
       <h2><a href="#opt-out">How do I opt a workload out?</a></h2>
       <p>Label the pod template <code>kube-headroom.dev/mode: unmanaged</code>. Namespace enrollment is your platform team's call; the pod label always wins for a single workload. Guaranteed QoS and BestEffort pods are never managed regardless.</p>
       <p>More: <a href="docs/tenant-guide.html#opting-in-and-out">opting in and out</a></p>
+    </article>
+
+    <article class="faq-item" id="sidecars">
+      <h2><a href="#sidecars">Does Headroom cap my sidecars?</a></h2>
+      <p>Only the ones that <strong>request CPU</strong>. A container with no CPU request gets no limit and runs unbounded, even inside a managed pod, and nothing warns you. A Docker-in-Docker sidecar that runs your build is the common case: the build runs in containers the sidecar starts, so the job container's ceiling never touches it. Give the sidecar a request sized for the build.</p>
+      <p>More: <a href="docs/tenant-guide.html#every-container-that-does-work-needs-a-cpu-request">tenant guide</a></p>
     </article>
 
     <article class="faq-item" id="cap-ceiling">
