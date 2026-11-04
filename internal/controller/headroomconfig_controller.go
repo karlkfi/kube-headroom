@@ -10,7 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -132,7 +131,7 @@ func readyMessage(hc *kubeheadroomv1alpha1.HeadroomConfig, pods, nodes int) stri
 // headroomConfigRequests maps any watched pod/node event onto the one singleton
 // config key, so a change in what Headroom manages nudges a status refresh.
 func headroomConfigRequests(context.Context, client.Object) []reconcile.Request {
-	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: kubeheadroomv1alpha1.SingletonName}}}
+	return []reconcile.Request{{Name: kubeheadroomv1alpha1.SingletonName}}
 }
 
 // SetupWithManager sets up the controller with the Manager. It watches the

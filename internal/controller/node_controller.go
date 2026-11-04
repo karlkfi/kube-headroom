@@ -663,7 +663,7 @@ func (r *NodeReconciler) podEventHandler() handler.EventHandler {
 		if nodeName == "" {
 			return
 		}
-		q.AddAfter(reconcile.Request{NamespacedName: types.NamespacedName{Name: nodeName}}, r.enqueueDelay())
+		q.AddAfter(reconcile.Request{Name: nodeName}, r.enqueueDelay())
 	}
 	return handler.Funcs{
 		CreateFunc: func(_ context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
@@ -700,7 +700,7 @@ func podUpdateRelevant(e event.UpdateEvent) bool {
 }
 
 func nodeToRequests(_ context.Context, o client.Object) []reconcile.Request {
-	return []reconcile.Request{{NamespacedName: types.NamespacedName{Name: o.GetName()}}}
+	return []reconcile.Request{{Name: o.GetName()}}
 }
 
 // nodeAllocatableChanged passes only node updates that move allocatable CPU;

@@ -38,9 +38,9 @@ func container(name string, reqMilli, limMilli int64) corev1.Container {
 
 func burstablePod(name string, cs ...corev1.Container) *corev1.Pod {
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: nsA},
-		Spec:       corev1.PodSpec{Containers: cs},
-		Status:     corev1.PodStatus{Phase: corev1.PodRunning, QOSClass: corev1.PodQOSBurstable},
+		Name: name, Namespace: nsA,
+		Spec:   corev1.PodSpec{Containers: cs},
+		Status: corev1.PodStatus{Phase: corev1.PodRunning, QOSClass: corev1.PodQOSBurstable},
 	}
 }
 
@@ -156,11 +156,10 @@ func TestPodCurrentLimitMilli(t *testing.T) {
 }
 
 func TestNamespaceManaged(t *testing.T) {
-	managedNS := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+	managedNS := &corev1.Namespace{
 		Name:   nsA,
-		Labels: map[string]string{kubeheadroomv1alpha1.LabelMode: kubeheadroomv1alpha1.ModeManaged},
-	}}
-	plainNS := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "team-b"}}
+		Labels: map[string]string{kubeheadroomv1alpha1.LabelMode: kubeheadroomv1alpha1.ModeManaged}}
+	plainNS := &corev1.Namespace{Name: "team-b"}
 
 	defaultSpec := kubeheadroomv1alpha1.HeadroomConfigSpec{ExcludedNamespaces: []string{"kube-system"}}
 	if !NamespaceManaged(managedNS, &defaultSpec) {
@@ -180,7 +179,7 @@ func TestNamespaceManaged(t *testing.T) {
 	selSpec := kubeheadroomv1alpha1.HeadroomConfigSpec{
 		NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"tier": "prod"}},
 	}
-	prodNS := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "p", Labels: map[string]string{"tier": "prod"}}}
+	prodNS := &corev1.Namespace{Name: "p", Labels: map[string]string{"tier": "prod"}}
 	if !NamespaceManaged(prodNS, &selSpec) {
 		t.Error("namespace matching explicit selector should be managed")
 	}
@@ -254,21 +253,19 @@ func TestOwnerExcluded(t *testing.T) {
 }
 
 func TestNodeManageable(t *testing.T) {
-	linux := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "linux-1"}}
+	linux := &corev1.Node{Name: "linux-1"}
 	linux.Status.NodeInfo.OperatingSystem = "linux"
 
-	windowsByInfo := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "win-1"}}
+	windowsByInfo := &corev1.Node{Name: "win-1"}
 	windowsByInfo.Status.NodeInfo.OperatingSystem = osWindows
 
-	windowsByLabel := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+	windowsByLabel := &corev1.Node{
 		Name:   "win-2",
-		Labels: map[string]string{corev1.LabelOSStable: osWindows},
-	}}
+		Labels: map[string]string{corev1.LabelOSStable: osWindows}}
 
-	staticCPU := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+	staticCPU := &corev1.Node{
 		Name:   "numa-1",
-		Labels: map[string]string{nodeExcludedLabel: labelTrue},
-	}}
+		Labels: map[string]string{nodeExcludedLabel: labelTrue}}
 
 	empty := &kubeheadroomv1alpha1.HeadroomConfigSpec{}
 	withSelector := &kubeheadroomv1alpha1.HeadroomConfigSpec{

@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
@@ -22,7 +21,7 @@ var _ = Describe("HeadroomConfig multiplier validation", func() {
 
 	newConfig := func(mutate func(*kubeheadroomv1alpha1.HeadroomConfigSpec)) *kubeheadroomv1alpha1.HeadroomConfig {
 		hc := &kubeheadroomv1alpha1.HeadroomConfig{
-			ObjectMeta: metav1.ObjectMeta{Name: kubeheadroomv1alpha1.SingletonName},
+			Name: kubeheadroomv1alpha1.SingletonName,
 		}
 		if mutate != nil {
 			mutate(&hc.Spec)

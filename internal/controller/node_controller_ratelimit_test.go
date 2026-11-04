@@ -10,8 +10,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,7 +38,7 @@ const rateLimitNodeName = "ratelimit-node"
 func rateLimitConfig(pps int32) *kubeheadroomv1alpha1.HeadroomConfig {
 	dr := false
 	return &kubeheadroomv1alpha1.HeadroomConfig{
-		ObjectMeta: metav1.ObjectMeta{Name: kubeheadroomv1alpha1.SingletonName},
+		Name: kubeheadroomv1alpha1.SingletonName,
 		Spec: kubeheadroomv1alpha1.HeadroomConfigSpec{
 			DryRun:        &dr,
 			MinBurstFloor: resource.MustParse("1"),
@@ -55,7 +53,7 @@ func rateLimitConfig(pps int32) *kubeheadroomv1alpha1.HeadroomConfig {
 // rateLimitNode is an 8-core Linux node (in-place resize allowed).
 func rateLimitNode() *corev1.Node {
 	return &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: rateLimitNodeName},
+		Name: rateLimitNodeName,
 		Status: corev1.NodeStatus{
 			Allocatable: corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(8, resource.DecimalSI)},
 		},
@@ -67,7 +65,7 @@ func rateLimitNode() *corev1.Node {
 // populate it, and Eligible gates on pod.Status.QOSClass == Burstable.
 func rateLimitPod(name string) *corev1.Pod {
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: nsA},
+		Name: name, Namespace: nsA,
 		Spec: corev1.PodSpec{
 			NodeName: rateLimitNodeName,
 			Containers: []corev1.Container{{
@@ -124,7 +122,7 @@ func newRateLimitReconciler(pps int32, podNames ...string) (*NodeReconciler, *at
 
 var _ = Describe("NodeReconciler per-node rate-limiter break (§7, §6.2c)", func() {
 	runReconcile := func(r *NodeReconciler) (reconcile.Result, error) {
-		return r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: rateLimitNodeName}})
+		return r.Reconcile(ctx, reconcile.Request{Name: rateLimitNodeName})
 	}
 
 	It("bounds patches to the bucket and requeues the rest when the bucket is exhausted", func() {

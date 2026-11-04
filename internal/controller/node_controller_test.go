@@ -36,7 +36,7 @@ func nextNode() string {
 
 // makeNode creates a node advertising the given allocatable CPU (cores).
 func makeNode(name string, cores int64) {
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	node := &corev1.Node{Name: name}
 	Expect(k8sClient.Create(ctx, node)).To(Succeed())
 	// Allocatable lives in status, which is dropped on create; set it explicitly.
 	node.Status.Allocatable = corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(cores, resource.DecimalSI)}
@@ -45,7 +45,7 @@ func makeNode(name string, cores int64) {
 
 // makeWindowsNode creates a Windows node (in-place resize unsupported, §8.4).
 func makeWindowsNode(name string, cores int64) {
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: name}}
+	node := &corev1.Node{Name: name}
 	Expect(k8sClient.Create(ctx, node)).To(Succeed())
 	node.Status.Allocatable = corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(cores, resource.DecimalSI)}
 	node.Status.NodeInfo.OperatingSystem = osWindows
@@ -55,10 +55,9 @@ func makeWindowsNode(name string, cores int64) {
 // makeManagedNamespace ensures the nsA namespace exists, opted in via the
 // mode=managed label.
 func makeManagedNamespace() {
-	ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+	ns := &corev1.Namespace{
 		Name:   nsA,
-		Labels: map[string]string{kubeheadroomv1alpha1.LabelMode: kubeheadroomv1alpha1.ModeManaged},
-	}}
+		Labels: map[string]string{kubeheadroomv1alpha1.LabelMode: kubeheadroomv1alpha1.ModeManaged}}
 	err := k8sClient.Create(ctx, ns)
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		Expect(err).NotTo(HaveOccurred())
@@ -79,8 +78,8 @@ func makeBurstablePod(ns, name, node string, reqMilli, limMilli int64) {
 		c.Resources.Limits = corev1.ResourceList{corev1.ResourceCPU: *resource.NewMilliQuantity(limMilli, resource.DecimalSI)}
 	}
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-		Spec:       corev1.PodSpec{Containers: []corev1.Container{c}, NodeName: node},
+		Name: name, Namespace: ns,
+		Spec: corev1.PodSpec{Containers: []corev1.Container{c}, NodeName: node},
 	}
 	Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 }
@@ -99,8 +98,8 @@ func makeBurstablePodWithSidecar(ns, name, node string, reqMilli int64) {
 	}
 	sidecar := corev1.Container{Name: "agent", Image: imgBusybox}
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns},
-		Spec:       corev1.PodSpec{Containers: []corev1.Container{app, sidecar}, NodeName: node},
+		Name: name, Namespace: ns,
+		Spec: corev1.PodSpec{Containers: []corev1.Container{app, sidecar}, NodeName: node},
 	}
 	Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 }
@@ -116,8 +115,8 @@ func makeOwnedBurstablePod(ns, name, node string, reqMilli int64, owner metav1.O
 		},
 	}
 	pod := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: ns, OwnerReferences: []metav1.OwnerReference{owner}},
-		Spec:       corev1.PodSpec{Containers: []corev1.Container{c}, NodeName: node},
+		Name: name, Namespace: ns, OwnerReferences: []metav1.OwnerReference{owner},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{c}, NodeName: node},
 	}
 	Expect(k8sClient.Create(ctx, pod)).To(Succeed())
 }
@@ -189,7 +188,7 @@ func applyConfig(dryRun bool) {
 // mutation of the spec (e.g. ExcludedOwners, ExcludedNodeSelector).
 func applyConfigWith(dryRun bool, extra func(*kubeheadroomv1alpha1.HeadroomConfigSpec)) {
 	dr := dryRun
-	hc := &kubeheadroomv1alpha1.HeadroomConfig{ObjectMeta: metav1.ObjectMeta{Name: kubeheadroomv1alpha1.SingletonName}}
+	hc := &kubeheadroomv1alpha1.HeadroomConfig{Name: kubeheadroomv1alpha1.SingletonName}
 	_, err := controllerutilCreateOrPatch(hc, func() {
 		hc.Spec.DryRun = &dr
 		if extra != nil {
@@ -221,7 +220,7 @@ var _ = Describe("NodeReconciler", func() {
 	var r *NodeReconciler
 
 	reconcileNode := func(node string) reconcile.Result {
-		res, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: node}})
+		res, err := r.Reconcile(ctx, reconcile.Request{Name: node})
 		Expect(err).NotTo(HaveOccurred())
 		return res
 	}
@@ -247,7 +246,7 @@ var _ = Describe("NodeReconciler", func() {
 
 	AfterEach(func() {
 		// Remove the config so each spec chooses its own dry-run posture.
-		hc := &kubeheadroomv1alpha1.HeadroomConfig{ObjectMeta: metav1.ObjectMeta{Name: kubeheadroomv1alpha1.SingletonName}}
+		hc := &kubeheadroomv1alpha1.HeadroomConfig{Name: kubeheadroomv1alpha1.SingletonName}
 		_ = k8sClient.Delete(ctx, hc)
 	})
 
@@ -279,7 +278,7 @@ var _ = Describe("NodeReconciler", func() {
 
 	It("does not manage pods in a non-opted-in namespace", func() {
 		applyConfig(false)
-		ns := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "team-plain"}}
+		ns := &corev1.Namespace{Name: "team-plain"}
 		Expect(k8sClient.Create(ctx, ns)).To(Succeed())
 		node := nextNode()
 		makeNode(node, 8)

@@ -10,8 +10,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
 )
 
@@ -38,9 +36,7 @@ var _ = Describe("HeadroomConfig Controller", func() {
 			err := k8sClient.Get(ctx, typeNamespacedName, headroomconfig)
 			if err != nil && errors.IsNotFound(err) {
 				resource := &kubeheadroomv1alpha1.HeadroomConfig{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: resourceName,
-					},
+					Name: resourceName,
 					// TODO(user): Specify other spec details if needed.
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
