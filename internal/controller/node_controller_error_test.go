@@ -11,9 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -42,7 +40,7 @@ const errNodeName = "err-node"
 func resizeErrConfig() *kubeheadroomv1alpha1.HeadroomConfig {
 	dr := false
 	return &kubeheadroomv1alpha1.HeadroomConfig{
-		ObjectMeta: metav1.ObjectMeta{Name: kubeheadroomv1alpha1.SingletonName},
+		Name: kubeheadroomv1alpha1.SingletonName,
 		Spec: kubeheadroomv1alpha1.HeadroomConfigSpec{
 			DryRun:        &dr,
 			MinBurstFloor: resource.MustParse("1"),
@@ -56,7 +54,7 @@ func resizeErrConfig() *kubeheadroomv1alpha1.HeadroomConfig {
 // resizeErrNode is an 8-core Linux node (in-place resize allowed).
 func resizeErrNode() *corev1.Node {
 	return &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: errNodeName},
+		Name: errNodeName,
 		Status: corev1.NodeStatus{
 			Allocatable: corev1.ResourceList{corev1.ResourceCPU: *resource.NewQuantity(8, resource.DecimalSI)},
 		},
@@ -65,10 +63,9 @@ func resizeErrNode() *corev1.Node {
 
 // resizeErrNamespace is the managed (mode=managed) namespace the pod lives in.
 func resizeErrNamespace() *corev1.Namespace {
-	return &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+	return &corev1.Namespace{
 		Name:   nsA,
-		Labels: map[string]string{kubeheadroomv1alpha1.LabelMode: kubeheadroomv1alpha1.ModeManaged},
-	}}
+		Labels: map[string]string{kubeheadroomv1alpha1.LabelMode: kubeheadroomv1alpha1.ModeManaged}}
 }
 
 // resizeErrPod is a solo Burstable pod (1000m request, no limit) bound to the
@@ -76,7 +73,7 @@ func resizeErrNamespace() *corev1.Namespace {
 // populate it, and Eligible gates on pod.Status.QOSClass == Burstable.
 func resizeErrPod(name string) *corev1.Pod {
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: nsA},
+		Name: name, Namespace: nsA,
 		Spec: corev1.PodSpec{
 			NodeName: errNodeName,
 			Containers: []corev1.Container{{
@@ -123,13 +120,13 @@ func newResizeErrReconciler(podName string, resizeErr error) (*NodeReconciler, *
 
 var _ = Describe("NodeReconciler resize-error outcomes (§6.4)", func() {
 	runReconcile := func(r *NodeReconciler) (reconcile.Result, error) {
-		return r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: errNodeName}})
+		return r.Reconcile(ctx, reconcile.Request{Name: errNodeName})
 	}
 
 	// podStub reconstructs the key inBackoff/setBackoffKey use (ns/name) without
 	// re-fetching the (interceptor-owned) pod.
 	podStub := func(name string) *corev1.Pod {
-		return &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Namespace: nsA, Name: name}}
+		return &corev1.Pod{Namespace: nsA, Name: name}
 	}
 
 	It("meters quota-denied, warns, and backs off on a 403 Forbidden (spike Q2c)", func() {

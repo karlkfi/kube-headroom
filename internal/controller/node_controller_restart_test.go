@@ -4,8 +4,6 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus/testutil"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -25,7 +23,7 @@ var _ = Describe("NodeReconciler backoff reconstruction after restart (Q37)", fu
 	}
 
 	AfterEach(func() {
-		hc := &kubeheadroomv1alpha1.HeadroomConfig{ObjectMeta: metav1.ObjectMeta{Name: kubeheadroomv1alpha1.SingletonName}}
+		hc := &kubeheadroomv1alpha1.HeadroomConfig{Name: kubeheadroomv1alpha1.SingletonName}
 		_ = k8sClient.Delete(ctx, hc)
 	})
 
@@ -47,7 +45,7 @@ var _ = Describe("NodeReconciler backoff reconstruction after restart (Q37)", fu
 		// First reconcile after "restart": the empty backoff map means the pod is a
 		// management candidate, but the Infeasible condition must exclude it this
 		// pass and arm backoff — no resize is issued.
-		_, err := r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: node}})
+		_, err := r.Reconcile(ctx, reconcile.Request{Name: node})
 		Expect(err).NotTo(HaveOccurred())
 
 		// Backoff is reconstructed (counter fires once) ...
@@ -74,7 +72,7 @@ var _ = Describe("NodeReconciler backoff reconstruction after restart (Q37)", fu
 		}).Should(BeTrue())
 
 		// The window holds on subsequent reconciles too (backoff, not a one-shot).
-		_, err = r.Reconcile(ctx, reconcile.Request{NamespacedName: types.NamespacedName{Name: node}})
+		_, err = r.Reconcile(ctx, reconcile.Request{Name: node})
 		Expect(err).NotTo(HaveOccurred())
 		_, ok = podLimitSeries("restart-infeasible")
 		Expect(ok).To(BeFalse())

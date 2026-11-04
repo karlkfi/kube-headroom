@@ -50,16 +50,15 @@ func config(mutate func(*kubeheadroomv1alpha1.HeadroomConfigSpec)) *kubeheadroom
 		mutate(&spec)
 	}
 	return &kubeheadroomv1alpha1.HeadroomConfig{
-		ObjectMeta: metav1.ObjectMeta{Name: kubeheadroomv1alpha1.SingletonName},
-		Spec:       spec,
+		Name: kubeheadroomv1alpha1.SingletonName,
+		Spec: spec,
 	}
 }
 
 func managedNS() *corev1.Namespace {
-	return &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{
+	return &corev1.Namespace{
 		Name:   nsA,
-		Labels: map[string]string{kubeheadroomv1alpha1.LabelMode: kubeheadroomv1alpha1.ModeManaged},
-	}}
+		Labels: map[string]string{kubeheadroomv1alpha1.LabelMode: kubeheadroomv1alpha1.ModeManaged}}
 }
 
 // container builds a container with an optional CPU request/limit (0 = unset).
@@ -78,8 +77,8 @@ func container(name string, reqMilli, limMilli int64) corev1.Container {
 
 func pod(cs ...corev1.Container) *corev1.Pod {
 	return &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Name: "p", Namespace: nsA},
-		Spec:       corev1.PodSpec{Containers: cs},
+		Name: "p", Namespace: nsA,
+		Spec: corev1.PodSpec{Containers: cs},
 	}
 }
 
@@ -144,7 +143,7 @@ func TestDefaultSuppressed(t *testing.T) {
 		},
 		{
 			name: "namespace not opted in",
-			objs: []client.Object{config(nil), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: nsA}}},
+			objs: []client.Object{config(nil), &corev1.Namespace{Name: nsA}},
 			pod:  pod(container(cApp, 100, 0)),
 		},
 		{
