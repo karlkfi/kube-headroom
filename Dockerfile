@@ -1,7 +1,7 @@
 # Build the manager binary. --platform=$BUILDPLATFORM keeps the compile stage
 # on the build host's native arch so multi-arch builds cross-compile via
 # GOOS/GOARCH below instead of emulating the Go toolchain under QEMU.
-FROM --platform=$BUILDPLATFORM golang:1.26 AS builder
+FROM --platform=$BUILDPLATFORM golang:1.27 AS builder
 ARG TARGETOS
 ARG TARGETARCH
 
