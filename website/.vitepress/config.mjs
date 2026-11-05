@@ -32,6 +32,8 @@ const descriptions = {
     "Release announcements and project news for Headroom, the Kubernetes controller that resizes CPU limits to share unrequested node capacity.",
   "news/2026-07-headroom-v0.1.0.md":
     "Headroom v0.1.0, the first public release: what's in it, why it ships dry-run by default, how to install the Helm charts, and whether you should run it yet.",
+  "queue/index.md":
+    "The Headroom backlog: open work in priority order, with what is ready, what is blocked, and what is deferred until a trigger fires.",
   "development/README.md":
     "The development process for Headroom: how work is picked from the backlog, branch and PR conventions, and the testing, debt, and release process docs.",
   "development/testing.md":
@@ -67,7 +69,7 @@ export default defineConfig({
   base: "/docs/",
   srcDir: "../docs",
   outDir: "./.vitepress/dist",
-  srcExclude: ["STATUS.md", "plan/**"],
+  srcExclude: ["queue/README.md", "plan/**"],
   // Repo docs link to files outside the docs tree (config/samples, CLAUDE.md);
   // those are fine on GitHub but unresolvable here.
   ignoreDeadLinks: true,
@@ -99,6 +101,14 @@ export default defineConfig({
   transformPageData(pageData) {
     const description = descriptions[pageData.relativePath];
     if (description) pageData.description = description;
+    // Backlog items come and go too often for the map above, and carry their
+    // ID in frontmatter, so each gets a description of its own from its title.
+    if (/^queue\/Q\d+\.md$/.test(pageData.relativePath)) {
+      pageData.description = `Headroom backlog item ${pageData.frontmatter.id}: ${pageData.title}.`;
+      // Items are not in the sidebar, so prev/next would link an arbitrary page.
+      pageData.frontmatter.prev = false;
+      pageData.frontmatter.next = false;
+    }
   },
   // Without these every docs page inherits the site card: one shared
   // description, no canonical, and an identical link preview.
@@ -164,6 +174,7 @@ export default defineConfig({
         text: "Contributing",
         items: [
           { text: "Development process", link: "/development/README" },
+          { text: "Backlog", link: "/queue/" },
           { text: "Testing", link: "/development/testing" },
           { text: "Kind inner loop", link: "/development/kind-iteration" },
           { text: "Kubernetes conventions", link: "/development/kubernetes-conventions" },

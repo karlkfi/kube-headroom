@@ -4,7 +4,9 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
+    "predocs:dev": "python3 ../scripts/render-backlog-page.py",
     "docs:dev": "vitepress dev",
+    "predocs:build": "python3 ../scripts/render-backlog-page.py",
     "docs:build": "vitepress build",
     "docs:preview": "vitepress preview"
   },
