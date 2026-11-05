@@ -23,15 +23,18 @@ docs: `docs/runbook.md` (operators), `docs/tenant-guide.md` (app teams),
 
 ## Backlog
 
-Work is tracked in `docs/STATUS.md` (repo-local backlog, priority-ordered
-Queue). Conventions:
+Work is tracked in `docs/queue/`, one file per item with priority in its `rank`
+key; `docs/queue/README.md` has the filing rules. Conventions:
 
-- Pick the next task from the **top of the Queue**; run `gh pr list` before
-  picking (an open PR is the in-flight signal).
-- Commit `docs/STATUS.md` changes in **isolated** `docs(status):` commits —
-  never mixed with code or plan-doc changes.
-- The `**Next ID:**` counter allocates new Q-IDs; bump it in the same edit.
-  Reference rows by bare Q-ID (`Q4`), never `#4`.
+- Pick the next task with `python3 scripts/queue.py next`; run `gh pr list`
+  before picking (an open PR is the in-flight signal).
+- Commit `docs/queue/` changes in **isolated** `docs(status):` commits — never
+  mixed with code or plan-doc changes. Delete an item's file when its work ships.
+- Allocate Q-IDs with `scripts/alloc-queue-id.sh` and ranks with
+  `scripts/queue.py rank`, never by hand. Reference items by bare Q-ID (`Q4`),
+  never `#4`.
+- The site's backlog page (`docs/queue/index.md`) is generated and gitignored.
+  Never commit it.
 
 ## Layout
 
@@ -130,7 +133,8 @@ kubecontext.
 | Install CRD chart / deploy operator | `make install` / `make deploy IMG=…` |
 | e2e on a dedicated kind cluster | `make setup-test-e2e test-e2e` |
 | Apply the sample config | `kubectl apply -k config/samples` |
-| Lint the backlog | `bash scripts/lint-backlog.sh docs/STATUS.md` |
+| Print the backlog in priority order | `python3 scripts/queue.py render --all` |
+| Lint the backlog | `make backlog-lint` |
 | Check workflow supply-chain hygiene | `make workflow-hygiene` |
 | Install website deps (Node 22) | `cd website && npm ci` |
 | Preview the docs subsite | `cd website && npm run docs:dev` |

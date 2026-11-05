@@ -99,8 +99,13 @@ verify-generate: manifests generate ## Fail if generated manifests/code are out 
 	}
 
 .PHONY: backlog-lint
-backlog-lint: ## Lint the docs/STATUS.md backlog.
-	bash scripts/lint-backlog.sh docs/STATUS.md
+backlog-lint: ## Lint docs/queue/, check IDs this branch adds are claimed, and check no index is committed.
+	python3 scripts/queue.py lint
+	python3 scripts/queue.py claims $(if $(CI),--strict)
+	@test -z "$$(git ls-files docs/STATUS.md docs/queue/index.md)" || { \
+		echo "ERROR: a generated backlog index is committed. The website builds it; remove it from git."; \
+		exit 1; \
+	}
 
 .PHONY: govulncheck
 govulncheck: govulncheck-tool ## Report known vulnerabilities in dependencies.
@@ -128,7 +133,7 @@ site-metadata: ## Check an assembled site dir for canonicals and unique meta des
 	python3 scripts/check-site-metadata.py $(or $(DIST),dist)
 
 .PHONY: plan-hygiene
-plan-hygiene: ## Check plan docs are STATUS-referenced or archived, and unreferenced by Go code.
+plan-hygiene: ## Check plan docs are referenced by a backlog item or archived, and unreferenced by Go code.
 	bash scripts/lint-plan-hygiene.sh
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.

@@ -7,6 +7,8 @@ on:
       - "docs/**"
       - "scripts/check-site-metadata.py"
       - "scripts/stamp-landing.py"
+      - "scripts/queue.py"
+      - "scripts/render-backlog-page.py"
       - ".github/workflows/website.yml"
   push:
     branches: [main]
@@ -15,6 +17,8 @@ on:
       - "docs/**"
       - "scripts/check-site-metadata.py"
       - "scripts/stamp-landing.py"
+      - "scripts/queue.py"
+      - "scripts/render-backlog-page.py"
       - ".github/workflows/website.yml"
   workflow_dispatch:
 

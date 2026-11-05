@@ -39,5 +39,4 @@ Start with the page that matches your role:
   [technical debt policy](development/technical-debt.md), and
   [releasing](development/releasing.md).
 
-Work is tracked in the repo-local backlog,
-[docs/STATUS.md](https://github.com/karlkfi/kube-headroom/blob/main/docs/STATUS.md).
+Work is tracked in the repo-local [backlog](queue/).

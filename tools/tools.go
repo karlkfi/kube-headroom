@@ -6,7 +6,7 @@
 // builds); the blank imports exist so `go mod tidy` keeps each tool's module in
 // tools/go.mod and tools/go.sum. The Makefile builds each binary out of this
 // module with `go build`, so tool versions are pinned here rather than as
-// floating Makefile string vars. See docs/STATUS.md Q15.
+// floating Makefile string vars.
 package tools
 
 import (

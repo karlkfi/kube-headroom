@@ -13,7 +13,6 @@ restating it.
 | [technical-debt.md](technical-debt.md) | The fix / flag / defer / decline policy. |
 | [releasing.md](releasing.md) | Cutting a release: tag → pipeline → verify → announce, and the bare-version image-tag invariant. |
 
-For *what* to build and in what order, see [../STATUS.md](../STATUS.md) (the
-backlog). For *why* it is built this way, see the design doc (`../design.md`,
+For *what* to build and in what order, see [the backlog](../queue/). For *why* it is built this way, see the design doc (`../design.md`,
 once adopted) and the plan docs under [../plan/](../plan/). This tree is *how*
 we work day to day.

@@ -1,18 +1,21 @@
 name: Backlog
 
-# The pre-commit hook lints docs/STATUS.md locally, but that config is not
-# cloned with the repo — this enforces the same format on pushes and PRs.
+# The pre-commit hook lints docs/queue/ locally, but that config is not cloned
+# with the repo. This holds the same rules on pushes and PRs, and adds the
+# ID-claim check, which needs full history and the remote.
 on:
   push:
     branches:
       - main
     paths:
-      - docs/STATUS.md
-      - scripts/lint-backlog.sh
+      - docs/queue/**
+      - scripts/queue.py
+      - Makefile
   pull_request:
     paths:
-      - docs/STATUS.md
-      - scripts/lint-backlog.sh
+      - docs/queue/**
+      - scripts/queue.py
+      - Makefile
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -24,13 +27,14 @@ jobs:
   lint:
     permissions:
       contents: read
-    name: Lint docs/STATUS.md
+    name: Lint docs/queue
     runs-on: ubuntu-latest
     steps:
       - name: Clone the code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Lint backlog
-        run: bash scripts/lint-backlog.sh docs/STATUS.md
+        run: make backlog-lint

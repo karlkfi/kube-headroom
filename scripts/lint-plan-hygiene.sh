@@ -6,7 +6,7 @@
 # in two ways this script prevents:
 #
 #   1. Orphaned plan docs. Every docs/plan/*.md must be either referenced from
-#      docs/STATUS.md (an active or deferred backlog row links it) or archived
+#      docs/queue/ (an active or deferred backlog item links it) or archived
 #      under docs/plan/archive/. A doc that is neither has outlived its task —
 #      the work shipped or was dropped and nobody archived the notes.
 #
@@ -16,7 +16,7 @@
 #      archived or deleted. Reference docs/design.md (or docs/) instead.
 #
 # Archive convention: once a plan doc's task has landed (or been abandoned) and
-# STATUS.md no longer links it, move the doc to docs/plan/archive/ to keep it
+# no backlog item links it, move the doc to docs/plan/archive/ to keep it
 # for history. Archived docs are exempt from check 1.
 #
 # Offline and dependency-free; inspects git-tracked files only. Exits non-zero
@@ -29,7 +29,7 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$repo_root"
 
-STATUS="docs/STATUS.md"
+QUEUE="docs/queue"
 bad=0
 
 emit() { # emit <message>
@@ -41,19 +41,19 @@ emit() { # emit <message>
     bad=1
 }
 
-if [[ ! -f "$STATUS" ]]; then
-    printf 'lint-plan-hygiene: %s not found\n' "$STATUS" >&2
+if [[ ! -d "$QUEUE" ]]; then
+    printf 'lint-plan-hygiene: %s not found\n' "$QUEUE" >&2
     exit 2
 fi
 
-# --- Invariant 1: every top-level plan doc is STATUS-referenced or archived ---
+# --- Invariant 1: every top-level plan doc is referenced by an item or archived ---
 # The docs/plan/*.md pathspec matches recursively, so exclude the archive dir.
-# STATUS.md links plan docs by their docs/-relative path (e.g. plan/foo.md).
+# Items link plan docs as ../plan/foo.md, which contains the docs/-relative path.
 while IFS= read -r doc; do
     [[ -n "$doc" ]] || continue
-    rel="${doc#docs/}"  # plan/foo.md — the form STATUS.md links by
-    if ! grep -qF "$rel" "$STATUS"; then
-        emit "$doc is neither referenced from $STATUS nor archived (link it from a backlog row, or move it to docs/plan/archive/)"
+    rel="${doc#docs/}"  # plan/foo.md
+    if ! grep -rqF "$rel" "$QUEUE"; then
+        emit "$doc is neither referenced from $QUEUE nor archived (link it from a backlog item, or move it to docs/plan/archive/)"
     fi
 done < <(git ls-files 'docs/plan/*.md' ':!:docs/plan/archive/**')
 
@@ -66,4 +66,4 @@ done < <(git grep -nF 'docs/plan' -- '*.go' || true)
 if (( bad )); then
     exit 1
 fi
-printf 'lint-plan-hygiene: ok (%s)\n' "$STATUS"
+printf 'lint-plan-hygiene: ok (%s)\n' "$QUEUE"

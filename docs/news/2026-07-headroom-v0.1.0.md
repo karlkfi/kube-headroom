@@ -73,7 +73,7 @@ it; app teams whose namespaces get enrolled should start with the
 
 The API is `v1alpha1` — the schema may still change between releases.
 Priorities live in the
-[backlog](https://github.com/karlkfi/kube-headroom/blob/main/docs/STATUS.md);
+[backlog](../queue/);
 promotion to `v1beta1` is gated on the spec surviving a release cycle
 unchanged. Found a bug or a sharp edge? Open an
 [issue](https://github.com/karlkfi/kube-headroom/issues).

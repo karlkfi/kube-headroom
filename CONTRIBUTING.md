@@ -51,11 +51,12 @@ fails otherwise. Never hand-edit generated files (`**/zz_generated*.go`,
 
 ## Backlog
 
-Work is tracked in [`docs/STATUS.md`](docs/STATUS.md) (a priority-ordered
-Queue). Pick from the top; run `gh pr list` first (an open PR is the in-flight
-signal). Commit `docs/STATUS.md` changes in **isolated** `docs(status):` commits
-— never mixed with code. The pre-commit hook (installed via `git config
-core.hooksPath .githooks`) enforces this and lints the file.
+Work is tracked in [`docs/queue/`](docs/queue/README.md), one file per item, and
+rendered at <https://kube-headroom.dev/docs/queue/>. Pick from the top; run
+`gh pr list` first (an open PR is the in-flight signal). Commit `docs/queue/`
+changes in **isolated** `docs(status):` commits — never mixed with code. The
+pre-commit hook (installed via `git config core.hooksPath .githooks`) enforces
+this and lints the store.
 
 ## Security
 
