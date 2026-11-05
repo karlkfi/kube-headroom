@@ -45,7 +45,7 @@ kubebuilder v4 project. API group / annotation prefix: **`kube-headroom.dev`**
   property tests cover every §5 invariant.
 - `api/v1alpha1/` — `HeadroomConfig` CRD (cluster-scoped singleton, name
   `cluster`; §9.3) and the label/annotation key constants.
-- `internal/controller/` — controllers (node reconciler lands in Q4).
+- `internal/controller/` — controllers (`node_controller.go` is the node reconciler).
 - `config/` — kustomize manifests (CRD, RBAC, manager). Since Q21 these are the
   **generation source only**, not the deploy path: `make manifests generate`
   still owns `config/crd/bases`, `config/rbac/role.yaml`, and

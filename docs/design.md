@@ -349,13 +349,13 @@ On a trusted, single-tenant cluster, simply omitting CPU limits (or running kube
 
 ## 9. Implementation sketch
 
-### 9.1 Repo layout (kubebuilder v4, Go 1.24+)
+### 9.1 Repo layout (kubebuilder v4, Go 1.27+)
 
 ```
 kube-headroom/
   cmd/main.go
   api/v1alpha1/headroomconfig_types.go     # cluster-scoped config CRD
-  internal/controller/node_reconciler.go   # informers, debounce, patching
+  internal/controller/node_controller.go   # informers, debounce, patching
   internal/policy/policy.go                # PURE FUNCTIONS — no k8s deps
   internal/policy/policy_test.go           # table tests, property tests
   internal/eligibility/eligibility.go

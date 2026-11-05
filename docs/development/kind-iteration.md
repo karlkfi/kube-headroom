@@ -1,7 +1,7 @@
 # The kind inner loop
 
 Fast iteration on the controller against a real cluster. Relevant once the
-controller exists and is running in-cluster (Q4/Q8); for host-run development
+controller is running in-cluster; for host-run development
 `make run` against any context is faster still. The goal here is a
 seconds-not-minutes edit → deploy → observe loop without recreating the cluster.
 
@@ -38,8 +38,8 @@ Once the Deployment exists, don't re-apply manifests for a code change — just
 point it at the new tag:
 
 ```
-kubectl set image deployment/headroom-controller-manager manager=headroom:$TAG -n headroom-system
-kubectl rollout status deployment/headroom-controller-manager -n headroom-system
+kubectl set image deployment/kube-headroom-controller-manager manager=headroom:$TAG -n kube-headroom-system
+kubectl rollout status deployment/kube-headroom-controller-manager -n kube-headroom-system
 ```
 
 `kubectl set image` triggers a rollout in place; `rollout status` blocks until
@@ -61,7 +61,7 @@ Then watch the controller act:
 ```
 kubectl get pod slack-probe -n <ns> -o jsonpath='{.spec.containers[0].resources.limits.cpu}{"\n"}'
 kubectl describe pod slack-probe -n <ns>          # events + status annotation
-kubectl logs deploy/headroom-controller-manager -n headroom-system -f
+kubectl logs deploy/kube-headroom-controller-manager -n kube-headroom-system -f
 ```
 
 Scale a probe up or down to change node slack and confirm limits move the way
