@@ -4,7 +4,7 @@
 
 Headroom is in **early development** and has not yet cut a release — it is not
 yet deployable (see [`README.md`](README.md) and
-[`docs/STATUS.md`](docs/STATUS.md)). Until the first tagged release, only the
+[the backlog](docs/queue/README.md)). Until the first tagged release, only the
 current `main` branch is supported and receives security fixes.
 
 | Version | Supported |

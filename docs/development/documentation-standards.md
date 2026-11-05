@@ -24,7 +24,7 @@ future goal. The README's status banner is the model.
 Every fact has exactly **one** canonical home:
 
 - Design rationale → the design doc (`design.md`).
-- What/when/priority → [../STATUS.md](../STATUS.md).
+- What/when/priority → [the backlog](../queue/).
 - API contract → the Go source and its doc comments (e.g.
   [`labels.go`](../../api/v1alpha1/labels.go)).
 - How we work → this `docs/development/` tree.

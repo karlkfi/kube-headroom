@@ -15,7 +15,7 @@ only on scheduling events — deterministic, low-churn, and debuggable.
 > **Status: v0.1.0 released** — installable via the Helm charts (see the
 > [operator runbook](docs/runbook.md)); the API is `v1alpha1` and defaults to
 > **`dryRun: true`**. Roadmap and priorities live in
-> [docs/STATUS.md](docs/STATUS.md).
+> [the backlog](https://kube-headroom.dev/docs/queue/).
 
 ## The problem
 

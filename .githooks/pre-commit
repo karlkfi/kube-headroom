@@ -2,8 +2,16 @@
 set -euo pipefail
 root="$(git rev-parse --show-toplevel)"
 
-# Backlog format checks (isolated docs(status): commits only).
-"$root/scripts/lint-backlog.sh" --staged
+# Backlog edits are isolated in docs(status): commits, and linted when staged.
+if [ -n "$(git diff --cached --name-only -- docs/queue)" ]; then
+	others="$(git diff --cached --name-only -- ':!docs/queue')"
+	if [ -n "$others" ]; then
+		echo "backlog: docs/queue must be committed in isolation, but these files are staged with it:" >&2
+		echo "$others" | sed 's/^/  /' >&2
+		exit 1
+	fi
+	python3 "$root/scripts/queue.py" lint
+fi
 
 # gofmt check on staged Go files (sub-second). Reject the commit if any staged
 # .go file is not gofmt-clean; run `gofmt -w <file>` and re-stage to fix.

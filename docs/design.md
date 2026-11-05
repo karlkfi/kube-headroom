@@ -5,7 +5,7 @@
 **Author:** Karl (design developed with Claude)
 **Date:** 2026-07-11 · **Adopted:** 2026-07-12 (Q9)
 **Scope:** This is the architectural design. Prioritized work is tracked in
-[`STATUS.md`](STATUS.md); in-flight plan docs live under [`plan/`](plan/). User
+[the backlog](queue/); in-flight plan docs live under [`plan/`](plan/). User
 docs: [runbook](runbook.md), [tenant guide](tenant-guide.md), [applicability
 matrix](applicability.md).
 
