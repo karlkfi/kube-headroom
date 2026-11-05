@@ -66,6 +66,15 @@ var (
 		Help:      "Number of Headroom-managed pods bound to the node.",
 	}, []string{nodeLabel})
 
+	// nodeResizesDeferred is the count of managed pods on the node whose kubelet
+	// reports the CPU-limit resize as Deferred (PodResizePending, §6.4). A count
+	// that stays above zero means the node has stopped converging.
+	nodeResizesDeferred = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: metricNamespace,
+		Name:      "node_resizes_deferred",
+		Help:      "Number of Headroom-managed pods on the node whose kubelet has deferred a CPU-limit resize.",
+	}, []string{nodeLabel})
+
 	// resizesTotal counts CPU-limit resize decisions by outcome. The applied and
 	// dry-run series are the money counters (rate of writes / would-be writes);
 	// the rest mirror the §6.4 refusal paths for alerting.
@@ -108,7 +117,7 @@ var (
 )
 
 func init() {
-	metrics.Registry.MustRegister(nodeFactor, nodeSlackCores, nodeManagedPods, resizesTotal, reconcileDuration, podLimitCores, podsManaged)
+	metrics.Registry.MustRegister(nodeFactor, nodeSlackCores, nodeManagedPods, nodeResizesDeferred, resizesTotal, reconcileDuration, podLimitCores, podsManaged)
 	// Pre-create the counter series so each exports 0 from process start, making
 	// rate()-based alerts well-defined before the first resize ever happens.
 	for _, r := range []string{resultApplied, resultDryRun, resultInfeasible, resultQuotaDenied, resultConflict, resultError} {

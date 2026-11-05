@@ -238,7 +238,7 @@ Per-pod resize results the controller handles (design §6.4), each with a distin
 |---|---|---|
 | `applied` | resize applied, cgroup rewritten | record annotation + `CPULimitAdjusted` event |
 | `dry-run` | target computed, not applied (`dryRun: true`) | annotation + metric only |
-| `Deferred` | kubelet will retry (transient) | track a gauge; a *sustained* deferred count on limit-only raises is an alerting signal |
+| `Deferred` | kubelet will retry (transient) | none; `headroom_node_resizes_deferred{node}` counts the managed pods holding one, and a *sustained* nonzero count is an alerting signal |
 | `infeasible` | kubelet cannot satisfy it (should be near-impossible — targets are capped at allocatable) | mark pod ineligible for `backoffPeriod`, warning event |
 | `quota-denied` | `403 Forbidden` from a namespace `limits.cpu` ResourceQuota | back off like `infeasible`; **the real fix is the preflight** — quota on `requests.cpu` only |
 
@@ -256,13 +256,17 @@ Prometheus series (design §8.1):
 - `headroom_pod_limit_cores{namespace,pod}` — the computed/applied ceiling.
 - `headroom_resizes_total{result}` — `applied` / `dry-run` / `infeasible` /
   `quota-denied` / `conflict` / `error`.
+- `headroom_node_resizes_deferred{node}` — managed pods whose kubelet reports the
+  resize as `Deferred` (`PodResizePending` condition).
 - `headroom_reconcile_duration_seconds`, `headroom_pods_managed`.
 
 The Grafana dashboard (`dashboards/headroom.json`) overlays
 `headroom_pod_limit_cores` on `container_cpu_cfs_throttled_periods_total`.
 
-**Alerts worth having:** any `result="quota-denied"` (a namespace violates the quota preflight), and
-`headroom_reconcile_duration_seconds` p99 climbing (cache or API pressure).
+**Alerts worth having:** `min_over_time(headroom_node_resizes_deferred[15m]) > 0`
+(a node's kubelet is not converging), any `result="quota-denied"` (a namespace
+violates the quota preflight), and `headroom_reconcile_duration_seconds` p99
+climbing (cache or API pressure).
 
 ---
 

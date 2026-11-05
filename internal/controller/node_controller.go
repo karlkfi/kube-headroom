@@ -174,6 +174,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	nodeFactor.WithLabelValues(req.Name).Set(stats.Factor)
 	nodeSlackCores.WithLabelValues(req.Name).Set(float64(stats.SlackMilli) / 1000.0)
 	nodeManagedPods.WithLabelValues(req.Name).Set(float64(stats.ManagedPods))
+	nodeResizesDeferred.WithLabelValues(req.Name).Set(float64(countDeferred(inputs, byKey)))
 
 	// Per-pod target-limit gauges — the §8.1 money-graph series. Set for every
 	// managed pod's computed target (the ceiling Headroom would/does enforce),
@@ -473,6 +474,7 @@ func (r *NodeReconciler) forgetNode(node string) {
 	nodeFactor.DeleteLabelValues(node)
 	nodeSlackCores.DeleteLabelValues(node)
 	nodeManagedPods.DeleteLabelValues(node)
+	nodeResizesDeferred.DeleteLabelValues(node)
 }
 
 // syncPodMetrics records the pods currently exporting a podLimitCores series for
@@ -638,6 +640,28 @@ func podResizeInfeasible(pod *corev1.Pod) bool {
 		}
 	}
 	return false
+}
+
+// podResizeDeferred reports whether the kubelet is holding a pending resize as
+// Deferred (§6.4) via the PodResizePending condition.
+func podResizeDeferred(pod *corev1.Pod) bool {
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodResizePending && c.Reason == corev1.PodReasonDeferred {
+			return true
+		}
+	}
+	return false
+}
+
+// countDeferred counts the managed pods whose resize the kubelet has deferred.
+func countDeferred(inputs []policy.PodInput, byKey map[string]*corev1.Pod) int {
+	n := 0
+	for _, in := range inputs {
+		if pod := byKey[in.Key]; in.Managed && pod != nil && podResizeDeferred(pod) {
+			n++
+		}
+	}
+	return n
 }
 
 // SetupWithManager registers the node field index and the pod/node watches that
