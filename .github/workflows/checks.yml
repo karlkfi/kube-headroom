@@ -23,7 +23,8 @@ jobs:
   # (doc-links/plan-hygiene), so a blanket paths-ignore can't express it — a
   # docs-only PR must still run doc-links, and a code-only PR must skip it. On
   # push to main every gate runs regardless (the outputs only gate PRs). There
-  # are no required status checks on this repo, so skipped jobs don't block a PR.
+  # are required status checks on this repo, but a job skipped by its `if`
+  # reports "skipped", which a required check treats as passing.
   changes:
     name: Classify changed files
     permissions:
