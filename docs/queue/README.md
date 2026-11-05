@@ -21,7 +21,7 @@ read this tree top to bottom.
    `make backlog-lint`.
 
 Title at most 72 characters; the body has no limit. A blocked item's note opens
-with `Blocked by [Q3](Q3.md)`. A deferred item's note opens with the `**Demand:**`,
+with "Blocked by" and a link to the blocking item's file. A deferred item's note opens with the `**Demand:**`,
 `**Event:**` or `**Decision:**` that revives it. An item ending in an unanswered
 question carries the `open-question` label and names its route with `**Settles:**`,
 `**Measure:**` or `**Ask:**`.
@@ -36,7 +36,8 @@ needs a plan doc under `docs/plan/`.
 Commit backlog edits in their own `docs(status):` commits, separate from code;
 the pre-commit hook rejects a commit that mixes them. Delete an item's file when
 its work ships, in a commit whose subject says why (`complete Q3`, `prune Q3`,
-`merge Q3 into Q4`). Git history is the archive.
+`merge Q3 into Q4`). Git history is the archive. In the same commit, update any
+item that links the deleted file; `make doc-links` fails on the dangling link.
 
 Never commit `docs/queue/index.md` or another generated index. The website
 builds that page with `scripts/render-backlog-page.py`, and a tracked index is
