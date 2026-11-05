@@ -1,3 +1,8 @@
+# The job names below are required status checks on `main` branch protection:
+# renaming one blocks every PR until the protection list is updated to match.
+# Only always-running checks may be required; path-filtered workflows (E2E,
+# Lint, Tests, Helm) are deliberately not, since a required check that never
+# runs blocks the PR.
 name: Checks
 
 on:
