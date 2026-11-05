@@ -64,6 +64,46 @@ if "$HELM" template "$OPERATOR_RELEASE" "$OPERATOR_CHART" -n "$HELM_NAMESPACE" \
   FAIL=1
 fi
 
+# webhook_switch "<label>" on|off [--set ...] — the manager reads ENABLE_WEBHOOKS,
+# not the chart's values. Rendered "on", webhook.enable=false starts a webhook
+# server with no cert and crash-loops; rendered "off", webhook.enable=true leaves
+# the MutatingWebhookConfiguration pointing at a server that never starts.
+webhook_switch() {
+  local label="$1" want="$2" rendered got=on
+  shift 2
+  printf '  webhook switch (%s): %s\n' "$want" "$label"
+  if ! rendered="$("$HELM" template "$OPERATOR_RELEASE" "$OPERATOR_CHART" -n "$HELM_NAMESPACE" "$@")"; then
+    echo "  FAILED: $label did not render" >&2
+    FAIL=1
+    return
+  fi
+  case "$(grep -A1 'name: ENABLE_WEBHOOKS' <<<"$rendered" || true)" in
+    *'value: "false"'*) got=off ;;
+  esac
+  if [ "$got" != "$want" ]; then
+    echo "  FAILED: $label rendered the webhook switch $got, want $want" >&2
+    FAIL=1
+  fi
+  # A repeated env name fails helm's server-side apply outright.
+  if [ "$(grep -c 'name: ENABLE_WEBHOOKS' <<<"$rendered" || true)" -gt 1 ]; then
+    echo "  FAILED: $label rendered ENABLE_WEBHOOKS more than once" >&2
+    FAIL=1
+  fi
+}
+
+webhook_switch "defaults" on
+webhook_switch "cert-manager off + webhook BYO cert" on \
+  --set certmanager.enable=false \
+  --set webhook.certSecretName=byo-webhook-tls \
+  --set webhook.caBundle=TEVTVCBDQQ==
+webhook_switch "webhook off" off --set webhook.enable=false
+webhook_switch "cert-manager off + webhook off" off \
+  --set certmanager.enable=false --set webhook.enable=false
+webhook_switch "webhook off + extraEnv" off --set webhook.enable=false \
+  --set 'extraEnv[0].name=FOO' --set 'extraEnv[0].value=bar'
+webhook_switch "webhook off + ENABLE_WEBHOOKS already in extraEnv" off --set webhook.enable=false \
+  --set 'extraEnv[0].name=ENABLE_WEBHOOKS' --set-string 'extraEnv[0].value=false'
+
 if [ "$FAIL" -ne 0 ]; then
   echo "helm render matrix: one or more cases failed" >&2
   exit 1
