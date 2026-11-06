@@ -304,3 +304,30 @@ func TestUserCapMilli(t *testing.T) {
 		t.Errorf("UserCapMilli = %d, want 0 for bad value", got)
 	}
 }
+
+// The envtest table in internal/controller proves each rule's arithmetic against a
+// real apiserver; these are the answers that resize cannot reach.
+func TestLimitRangeCapMilli_NoRule(t *testing.T) {
+	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{container(cApp, 100, 200)}}}
+	rcs := ResizableContainers(pod)
+	memoryOnly := corev1.LimitRange{Spec: corev1.LimitRangeSpec{Limits: []corev1.LimitRangeItem{{
+		Type: corev1.LimitTypeContainer,
+		Max:  corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("1Gi")},
+	}}}}
+	for name, lrs := range map[string][]corev1.LimitRange{"none": nil, "memory only": {memoryOnly}} {
+		if got := LimitRangeCapMilli(pod, rcs, lrs); got != 0 {
+			t.Errorf("%s: cap = %d, want 0", name, got)
+		}
+	}
+}
+
+func TestLimitRangeCapMilli_RuleLeavingNoRoomIsStillACap(t *testing.T) {
+	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{container(cApp, 100, 200), container("agent", 0, 500)}}}
+	tight := corev1.LimitRange{Spec: corev1.LimitRangeSpec{Limits: []corev1.LimitRangeItem{{
+		Type: corev1.LimitTypePod,
+		Max:  corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("300m")},
+	}}}}
+	if got := LimitRangeCapMilli(pod, ResizableContainers(pod), []corev1.LimitRange{tight}); got != 1 {
+		t.Errorf("cap = %d, want 1", got)
+	}
+}

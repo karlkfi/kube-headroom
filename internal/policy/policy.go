@@ -19,7 +19,16 @@ type PodInput struct {
 	CurrentLimitMilli int64 // enforced limit today; 0 = unset
 	Managed           bool  // eligible + opted-in; only managed pods receive burst
 	UserCapMilli      int64 // optional per-pod ceiling (headroom.<prefix>/max-cpu); 0 = none
+	LimitRangeCap     int64 // largest target the namespace's LimitRanges admit (§8.3); 0 = none
 	AboveRequest      bool  // limit == request would make the pod Guaranteed, which resize refuses (§4.1)
+}
+
+// capMilli is the tighter of the pod's two ceilings; 0 = none.
+func (p PodInput) capMilli() int64 {
+	if p.UserCapMilli <= 0 || (p.LimitRangeCap > 0 && p.LimitRangeCap < p.UserCapMilli) {
+		return p.LimitRangeCap
+	}
+	return p.UserCapMilli
 }
 
 // Config holds the tunable policy knobs (design doc §9.2). Zero value is not
@@ -116,7 +125,7 @@ func decide(p PodInput, s NodeStats, cfg Config) Decision {
 
 	// Slack ≤ 0 (or degenerate M): collapse to request. (§5.4)
 	if s.SlackMilli <= 0 || s.ManagedRequestsMilli <= 0 {
-		target := clampAndQuantize(req, req, s.AllocatableMilli, p.UserCapMilli, cfg)
+		target := clampAndQuantize(req, req, s.AllocatableMilli, p.capMilli(), cfg)
 		return finalize(p, target, "slack<=0: limit=request", cfg)
 	}
 
@@ -132,19 +141,19 @@ func decide(p PodInput, s NodeStats, cfg Config) Decision {
 	burst := math.Max(proportional, floor)
 	raw := req + int64(math.Round(burst))
 
-	target := clampAndQuantize(raw, req, s.AllocatableMilli, p.UserCapMilli, cfg)
+	target := clampAndQuantize(raw, req, s.AllocatableMilli, p.capMilli(), cfg)
 	return finalize(p, target, reasonFor(target, p.CurrentLimitMilli), cfg)
 }
 
 // clampAndQuantize applies §5.3 caps in order then quantizes, keeping the
 // result within [request, hi] where hi = min(allocatable, request×maxMult, userCap).
-func clampAndQuantize(raw, req, allocatable, userCap int64, cfg Config) int64 {
+func clampAndQuantize(raw, req, allocatable, podCap int64, cfg Config) int64 {
 	hi := allocatable
 	if cfg.MaxMultiplier > 0 {
 		hi = min(hi, int64(math.Round(float64(req)*cfg.MaxMultiplier)))
 	}
-	if userCap > 0 {
-		hi = min(hi, userCap)
+	if podCap > 0 {
+		hi = min(hi, podCap)
 	}
 	// request is the hard floor even if caps would push below it.
 	if hi < req {
@@ -173,6 +182,9 @@ func finalize(p PodInput, target int64, reason string, cfg Config) Decision {
 	if p.AboveRequest && target <= p.RequestMilli {
 		q := max(cfg.QuantumMilli, 1)
 		target = (p.RequestMilli/q + 1) * q
+		if p.LimitRangeCap > p.RequestMilli {
+			target = min(target, p.LimitRangeCap) // under a quantum of room, off-grid is the only value both rules admit
+		}
 		reason = "limit=request would make the pod Guaranteed"
 	}
 	d := Decision{Key: p.Key, TargetLimitMilli: target, Reason: reason}

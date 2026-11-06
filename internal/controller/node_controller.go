@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -49,7 +50,7 @@ const (
 	defaultDebouncePeriod = 2 * time.Second
 
 	// defaultBackoffPeriod is how long a pod is skipped after a resize is refused
-	// (quota 403 or kubelet Infeasible) before Headroom retries it (§6.4).
+	// (admission 403 or kubelet Infeasible) before Headroom retries it (§6.4).
 	defaultBackoffPeriod = 60 * time.Second
 )
 
@@ -60,9 +61,9 @@ type NodeReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 
-	// Recorder emits CPULimitAdjusted / ResizeInfeasible / ResizeForbidden events
-	// on managed pods (§8.1) via the events/v1 API. A nil Recorder is tolerated
-	// (events are skipped).
+	// Recorder emits CPULimitAdjusted / ResizeInfeasible / ResizeForbidden /
+	// ResizeLimitRangeDenied events on managed pods (§8.1) via the events/v1 API.
+	// A nil Recorder is tolerated (events are skipped).
 	Recorder events.EventRecorder
 
 	// FieldManager is the SSA owner for limits.cpu (defaults to "headroom").
@@ -116,7 +117,7 @@ type podSeriesRef struct {
 	name      string
 }
 
-// The RBAC this reconciler needs (pods, pods/resize, nodes, namespaces) is
+// The RBAC this reconciler needs (pods, pods/resize, nodes, namespaces, limitranges) is
 // declared once on HeadroomConfigReconciler; see headroomconfig_controller.go.
 
 // Reconcile recomputes every managed pod's CPU limit for one node and applies
@@ -263,6 +264,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 // and a key→pod map so decisions can be applied without re-fetching.
 func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, pods []corev1.Pod, nodeManaged bool) ([]policy.PodInput, map[string]*corev1.Pod, error) {
 	nsManaged := map[string]bool{}
+	nsLimitRanges := map[string][]corev1.LimitRange{}
 	inputs := make([]policy.PodInput, 0, len(pods))
 	byKey := make(map[string]*corev1.Pod, len(pods))
 
@@ -304,9 +306,9 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 		// branch is reached only when the pod is not already backed off, so the
 		// warning event and result=infeasible counter fire once per window, not per
 		// reconcile — a sustained count is the alerting signal (§6.4). The
-		// quota-403 refusal is not re-derivable from pod status, so after a restart
-		// it re-fails once before backing off (classifyResizeError); that residual
-		// is accepted.
+		// admission 403 refusals are not re-derivable from pod status, so after a
+		// restart they re-fail once before backing off (classifyResizeError); that
+		// residual is accepted.
 		if managed && podResizeInfeasible(pod) {
 			resizesTotal.WithLabelValues(resultInfeasible).Inc()
 			r.recordEvent(pod, corev1.EventTypeWarning, reasonResizeInfeasible,
@@ -315,7 +317,20 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 			managed = false
 		}
 
-		inputs = append(inputs, buildPodInput(pod, rcs, managed))
+		input := buildPodInput(pod, rcs, managed)
+		if managed {
+			lrs, cached := nsLimitRanges[pod.Namespace]
+			if !cached {
+				var list corev1.LimitRangeList
+				if err := r.List(ctx, &list, client.InNamespace(pod.Namespace)); err != nil {
+					return nil, nil, fmt.Errorf("list limitranges in %s: %w", pod.Namespace, err)
+				}
+				lrs = list.Items
+				nsLimitRanges[pod.Namespace] = lrs
+			}
+			input.LimitRangeCap = eligibility.LimitRangeCapMilli(pod, rcs, lrs)
+		}
+		inputs = append(inputs, input)
 		byKey[pod.Namespace+"/"+pod.Name] = pod
 	}
 	return inputs, byKey, nil
@@ -388,15 +403,34 @@ func (r *NodeReconciler) classifyResizeError(ctx context.Context, pod *corev1.Po
 		log.V(1).Info("resize conflict, will requeue", "pod", key)
 		return true, true
 	case apierrors.IsForbidden(err):
-		// Quota limits.cpu 403 (spike Q2c): treat like Infeasible — back off.
-		resizesTotal.WithLabelValues(resultQuotaDenied).Inc()
-		log.Info("resize forbidden (likely limits.cpu quota); backing off", "pod", key, "err", err.Error())
-		r.recordEvent(pod, corev1.EventTypeWarning, reasonResizeForbidden,
-			fmt.Sprintf("CPU-limit resize forbidden (likely a limits.cpu ResourceQuota); backing off %s", r.backoffPeriod()))
+		// Treat any 403 like Infeasible — back off (spike Q2c) — but name who refused.
+		result, reason, refusedBy := forbiddenOutcome(err.Error())
+		resizesTotal.WithLabelValues(result).Inc()
+		log.Info("resize refused; backing off", "pod", key, "refusedBy", refusedBy, "err", err.Error())
+		r.recordEvent(pod, corev1.EventTypeWarning, reason,
+			fmt.Sprintf("CPU-limit resize refused by %s; backing off %s: %s", refusedBy, r.backoffPeriod(), err.Error()))
 		r.setBackoffKey(key)
 		return false, true
 	default:
 		return false, false
+	}
+}
+
+// forbiddenOutcome names who refused a resize. A 403 carries that only in its
+// message, so this reads the wording of the apiserver's LimitRanger and
+// ResourceQuota plugins, which envtest pins (node_controller_limitrange_test.go).
+// LimitRanger runs first, so a pod breaking both rules reads as a LimitRange refusal.
+func forbiddenOutcome(msg string) (result, reason, refusedBy string) {
+	has := func(wording ...string) bool {
+		return slices.ContainsFunc(wording, func(w string) bool { return strings.Contains(msg, w) })
+	}
+	switch {
+	case has(" usage per ", " max limit to request ratio per ", "error enforcing limit ranges"):
+		return resultLimitRangeDenied, reasonResizeLimitRange, "a LimitRange"
+	case has("exceeded quota", "failed quota", "status unknown for quota", "insufficient quota", "quota usage is negative"):
+		return resultQuotaDenied, reasonResizeForbidden, "a ResourceQuota"
+	default:
+		return resultForbidden, reasonResizeForbidden, "the apiserver"
 	}
 }
 

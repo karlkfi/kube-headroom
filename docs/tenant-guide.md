@@ -108,6 +108,10 @@ stays one quantum (10m by default) above that request, because Kubernetes
 refuses a resize that would make the pod Guaranteed. So a memory-pinned pod with
 a 100m request and `max-cpu: 100m` runs at 110m.
 
+A LimitRange in your namespace caps the limit the same way, whatever `max-cpu`
+says. A pod's limit is split across its containers by request, so a per-container
+`max` stops the pod when the container with the largest request reaches it.
+
 ## Runtimes that read CPU quota once at startup
 
 **This is the most common surprise.** Some runtimes size their thread pools from

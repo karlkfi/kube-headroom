@@ -6,6 +6,7 @@
 package eligibility
 
 import (
+	"math"
 	"slices"
 	"strings"
 
@@ -124,7 +125,8 @@ func OptedOut(pod *corev1.Pod) bool {
 // CPU request, and no container that would restart on resize (§9.4.2). The
 // remaining §6.3 gates need cluster context and live in the reconciler:
 // namespace opt-in (NamespaceManaged), owner exclusion (OwnerExcluded), and node
-// exclusion (NodeManageable). LimitRange awareness is deferred to Phase 2.
+// exclusion (NodeManageable). A LimitRange caps a pod rather than excluding it
+// (LimitRangeCapMilli).
 //
 // This gate keys off pod.Status.QOSClass, which the apiserver populates after
 // admission — so it is the controller's post-bind gate. The webhook, which runs
@@ -246,4 +248,56 @@ func PodBookedCPUMilli(pod *corev1.Pod) int64 {
 		InPlacePodLevelResourcesVerticalScalingEnabled: true,
 	})
 	return reqs.Cpu().MilliValue()
+}
+
+// LimitRangeCapMilli is the largest pod target the given LimitRanges admit (§8.3),
+// or 0 when none of them bounds CPU. It restates each rule the apiserver checks on
+// a resize as a pod total. The target splits pro-rata by request (splitLimit), so a
+// per-container max binds through the largest request and a per-container ratio
+// through the total, while a per-pod rule also counts the limits of request-less
+// containers, which Headroom leaves alone. The result can sit below the pod's
+// request when a LimitRange postdates the pod; no resize can satisfy that one.
+func LimitRangeCapMilli(pod *corev1.Pod, rcs []ResizableContainer, limitRanges []corev1.LimitRange) int64 {
+	var total, largest, untouched float64
+	for _, c := range rcs {
+		total += float64(c.RequestMilli)
+		largest = max(largest, float64(c.RequestMilli))
+		if c.RequestMilli <= 0 {
+			untouched += float64(c.LimitMilli)
+		}
+	}
+	if total <= 0 || len(limitRanges) == 0 {
+		return 0
+	}
+	podRequests := resourcehelper.PodRequests(pod, resourcehelper.PodResourcesOptions{ExcludeOverhead: true})
+	podRequest := float64(podRequests.Cpu().MilliValue())
+
+	limit := math.Inf(1)
+	for i := range limitRanges {
+		for _, item := range limitRanges[i].Spec.Limits {
+			maxCPU, hasMax := item.Max[corev1.ResourceCPU]
+			ratioCPU, hasRatio := item.MaxLimitRequestRatio[corev1.ResourceCPU]
+			maxMilli, ratio := float64(maxCPU.MilliValue()), float64(ratioCPU.MilliValue())/1000
+			switch item.Type {
+			case corev1.LimitTypeContainer:
+				if hasMax {
+					limit = min(limit, maxMilli*total/largest)
+				}
+				if hasRatio {
+					limit = min(limit, ratio*total)
+				}
+			case corev1.LimitTypePod:
+				if hasMax {
+					limit = min(limit, maxMilli-untouched)
+				}
+				if hasRatio {
+					limit = min(limit, ratio*podRequest-untouched)
+				}
+			}
+		}
+	}
+	if limit >= math.MaxInt64 {
+		return 0
+	}
+	return max(int64(limit), 1) // 0 means no cap, and a rule leaving no room is still a cap
 }

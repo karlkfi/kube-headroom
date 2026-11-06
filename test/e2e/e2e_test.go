@@ -328,6 +328,7 @@ var _ = Describe("Manager", Ordered, func() {
 	// first and remove their policy afterwards, so it never gates headroomSpecs.
 	admissionPolicySpecs()
 	headroomSpecs()
+	limitRangeSpecs()
 })
 
 // serviceAccountToken returns a token for the specified service account in the given namespace.

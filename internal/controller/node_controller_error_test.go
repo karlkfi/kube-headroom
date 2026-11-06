@@ -28,7 +28,7 @@ import (
 // controller-runtime fake client and made to fail, so the refusal table — 403 →
 // quota-denied, Conflict → requeue, generic → bubble — is exercised directly. Quota
 // 403 is a Phase-0-validated failure path (spike Q2c) and a §8.6 alerting signal, so
-// it must not stay untested.
+// it must not stay untested. node_controller_limitrange_test.go covers who a 403 names.
 
 const errNodeName = "err-node"
 
