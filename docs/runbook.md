@@ -64,8 +64,9 @@ namespace at a time.
    charts on ghcr: `kube-headroom-crds` (the CRD, cluster-wide, installed once)
    and `kube-headroom` (the namespaced operator). The CRD chart carries
    `helm.sh/resource-policy: keep`, so a later `helm uninstall` never drops live
-   `HeadroomConfig`s. cert-manager must be present (it issues the webhook
-   serving cert).
+   `HeadroomConfig`s. The webhook serving cert comes from cert-manager by
+   default; without cert-manager, supply your own (`certmanager.enable=false`,
+   `webhook.certSecretName`, `webhook.caBundle`).
 
    ```sh
    # CRD chart — cluster-wide, on its own lifecycle:
@@ -120,7 +121,7 @@ namespace at a time.
    kubectl patch hcfg cluster --type merge -p '{"spec":{"dryRun":false}}'
    ```
 
-   Now watch `CPULimitAdjusted` events and `headroom_resizes_total{result="ok"}`.
+   Now watch `CPULimitAdjusted` events and `headroom_resizes_total{result="applied"}`.
    A managed pod alone on a node should climb toward allocatable; scheduling a
    neighbor should shrink it within a few seconds.
 
@@ -235,11 +236,11 @@ Per-pod resize results the controller handles (design §6.4), each with a distin
 
 | Result | Meaning | Controller action |
 |---|---|---|
-| `ok` | resize applied, cgroup rewritten | record annotation + `CPULimitAdjusted` event |
+| `applied` | resize applied, cgroup rewritten | record annotation + `CPULimitAdjusted` event |
 | `dry-run` | target computed, not applied (`dryRun: true`) | annotation + metric only |
 | `Deferred` | kubelet will retry (transient) | track a gauge; a *sustained* deferred count on limit-only raises is an alerting signal |
-| `Infeasible` | kubelet cannot satisfy it (should be near-impossible — targets are capped at allocatable) | mark pod ineligible for `backoffPeriod`, warning event |
-| `quota-denied` | `403 Forbidden` from a namespace `limits.cpu` ResourceQuota | back off like `Infeasible`; **the real fix is the preflight** — quota on `requests.cpu` only |
+| `infeasible` | kubelet cannot satisfy it (should be near-impossible — targets are capped at allocatable) | mark pod ineligible for `backoffPeriod`, warning event |
+| `quota-denied` | `403 Forbidden` from a namespace `limits.cpu` ResourceQuota | back off like `infeasible`; **the real fix is the preflight** — quota on `requests.cpu` only |
 
 A rising `quota-denied` count means a managed namespace still has a `limits.cpu`
 quota. Fix the quota (see [Preflight](#preflight)); do not tune around it.
@@ -252,17 +253,15 @@ Prometheus series (design §8.1):
 
 - `headroom_node_factor{node}` — the per-node slack factor `F = 1 + S/M`.
 - `headroom_node_slack_cores{node}` — unbooked CPU on the node.
-- `headroom_pod_limit_cores{pod}` — the computed/applied ceiling.
-- `headroom_resizes_total{result}` — `ok` / `dry-run` / `Deferred` /
-  `Infeasible` / `quota-denied`.
+- `headroom_pod_limit_cores{namespace,pod}` — the computed/applied ceiling.
+- `headroom_resizes_total{result}` — `applied` / `dry-run` / `infeasible` /
+  `quota-denied` / `conflict` / `error`.
 - `headroom_reconcile_duration_seconds`, `headroom_pods_managed`.
 
-Ship the Grafana dashboard (`dashboards/headroom.json`, lands with observability
-in Q7) that overlays `headroom_pod_limit_cores` on
-`container_cpu_cfs_throttled_periods_total`.
+The Grafana dashboard (`dashboards/headroom.json`) overlays
+`headroom_pod_limit_cores` on `container_cpu_cfs_throttled_periods_total`.
 
-**Alerts worth having:** sustained `result="Deferred"` (kubelet not converging),
-any `result="quota-denied"` (a namespace violates the quota preflight), and
+**Alerts worth having:** any `result="quota-denied"` (a namespace violates the quota preflight), and
 `headroom_reconcile_duration_seconds` p99 climbing (cache or API pressure).
 
 ---
@@ -350,7 +349,8 @@ are safe.
   contention. Frozen-tight limits on a node that then empties give unnecessary
   throttling — i.e., plain Kubernetes. Neither is worse than not running it.
 - **API-server pressure:** rate limits (`perNodePatchesPerSecond`,
-  `clientQPS`/`clientBurst`) bound the write load; the degraded mode is
+  `clientQPS`/`clientBurst`) bound the write load (`clientQPS` and `clientBurst`
+  are read once at startup, so changing them needs a manager restart); the degraded mode is
   staleness, which is safe per above. If you must shed load fast, raise the
   deadband or set `dryRun: true`.
 - **Two leaders (split brain):** leader election prevents it; even if violated,
