@@ -19,7 +19,40 @@ func buildPodInput(pod *corev1.Pod, rcs []eligibility.ResizableContainer, manage
 		CurrentLimitMilli: eligibility.PodCurrentLimitMilli(rcs),
 		Managed:           managed,
 		UserCapMilli:      eligibility.UserCapMilli(pod),
+		AboveRequest:      guaranteedAtRequest(pod),
 	}
+}
+
+// guaranteedAtRequest reports whether a limit equal to the request on every app
+// and sidecar container would make the pod Guaranteed: every container then has
+// CPU and memory limits equal to its requests. Requests never exceed limits, so
+// checking each container matches the apiserver's per-resource sums. Pod-level
+// resources set the QoS class themselves, and a container resize cannot move them.
+func guaranteedAtRequest(pod *corev1.Pod) bool {
+	if pod.Spec.Resources != nil {
+		return false
+	}
+	pinned := func(c *corev1.Container) bool {
+		memReq := c.Resources.Requests.Memory()
+		return c.Resources.Requests.Cpu().Sign() > 0 && memReq.Sign() > 0 && memReq.Cmp(*c.Resources.Limits.Memory()) == 0
+	}
+	for i := range pod.Spec.Containers {
+		if !pinned(&pod.Spec.Containers[i]) {
+			return false
+		}
+	}
+	for i := range pod.Spec.InitContainers {
+		c := &pod.Spec.InitContainers[i]
+		if !pinned(c) {
+			return false
+		}
+		// Headroom never resizes a non-restartable init container, so its own limit counts.
+		sidecar := c.RestartPolicy != nil && *c.RestartPolicy == corev1.ContainerRestartPolicyAlways
+		if !sidecar && c.Resources.Requests.Cpu().Cmp(*c.Resources.Limits.Cpu()) != 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // splitLimit distributes a pod-level target CPU limit across its resizable

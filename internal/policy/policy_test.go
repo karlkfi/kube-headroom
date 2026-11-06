@@ -87,6 +87,50 @@ func TestSlackNonPositive_CollapsesToRequest(t *testing.T) {
 	}
 }
 
+// §4.1: a pod that limit == request would make Guaranteed stays one quantum above
+// request wherever the target would otherwise land on it, ahead of every cap.
+func TestAboveRequest_StaysAboveRequest(t *testing.T) {
+	pinned := func(req, cur, userCap int64) PodInput {
+		return PodInput{Key: "P", RequestMilli: req, CurrentLimitMilli: cur, Managed: true, UserCapMilli: userCap, AboveRequest: true}
+	}
+	withConfig := func(mutate func(*Config)) Config {
+		cfg := DefaultConfig()
+		mutate(&cfg)
+		return cfg
+	}
+	tests := []struct {
+		name  string
+		alloc int64
+		pod   PodInput
+		cfg   Config
+		want  int64
+		apply bool
+	}{
+		{"no slack", 100, pinned(100, 1000, 0), DefaultConfig(), 110, true},
+		{"overcommitted", 50, pinned(100, 1000, 0), DefaultConfig(), 110, true},
+		{"slack below half a quantum", 103, pinned(100, 1000, 0), withConfig(func(c *Config) { c.MinBurstFloorMilli = 0 }), 110, true},
+		{"request off the quantum grid", 104, pinned(104, 1000, 0), DefaultConfig(), 110, true},
+		{"request on the next grid line", 110, pinned(110, 1000, 0), DefaultConfig(), 120, true},
+		{"quantum disabled", 100, pinned(100, 1000, 0), withConfig(func(c *Config) { c.QuantumMilli = 0 }), 101, true},
+		{"user cap at request", 4000, pinned(100, 1000, 100), DefaultConfig(), 110, true},
+		{"multiplier cap at request", 4000, pinned(100, 1000, 0), withConfig(func(c *Config) { c.MaxMultiplier = 1 }), 110, true},
+		{"already at the floor", 100, pinned(100, 110, 0), DefaultConfig(), 110, false},
+		{"within the shrink deadband", 1000, pinned(1000, 1020, 0), DefaultConfig(), 1010, false},
+		{"slack clears the floor untouched", 4000, pinned(1000, 1000, 0), DefaultConfig(), 4000, true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, ds := Compute(tt.alloc, []PodInput{tt.pod}, tt.cfg)
+			if got := ds[0].TargetLimitMilli; got != tt.want {
+				t.Errorf("target = %d, want %d", got, tt.want)
+			}
+			if ds[0].Apply != tt.apply {
+				t.Errorf("apply = %v, want %v", ds[0].Apply, tt.apply)
+			}
+		})
+	}
+}
+
 // §5.4: unmanaged pods consume slack but receive no decision and no burst.
 func TestUnmanaged_ConsumeSlackButNoDecision(t *testing.T) {
 	cfg := DefaultConfig()

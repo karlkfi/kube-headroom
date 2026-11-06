@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"sync"
@@ -193,6 +194,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	nodePods := len(inputs)
 	limiter := r.limiterFor(req.Name, cfg.perNodePPS)
 	rateLimited := false
+	var resizeErrs []error
 	for _, d := range decisions {
 		pod := byKey[d.Key]
 		if pod == nil {
@@ -233,14 +235,20 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 				rateLimited = rateLimited || res
 				continue
 			}
+			// One pod's failure must not strand the rest of the node; returning the
+			// errors after the loop still requeues the node with backoff.
 			resizesTotal.WithLabelValues(resultError).Inc()
-			return ctrl.Result{}, fmt.Errorf("resize %s: %w", d.Key, err)
+			resizeErrs = append(resizeErrs, fmt.Errorf("resize %s: %w", d.Key, err))
+			continue
 		}
 		resizesTotal.WithLabelValues(resultApplied).Inc()
 		r.recordEvent(pod, corev1.EventTypeNormal, reasonCPULimitAdjusted,
 			adjustMessage(currentMilli, d.TargetLimitMilli, stats, false))
 	}
 
+	if err := errors.Join(resizeErrs...); err != nil {
+		return ctrl.Result{}, err
+	}
 	if rateLimited {
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
