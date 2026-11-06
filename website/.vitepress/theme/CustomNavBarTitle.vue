@@ -47,6 +47,18 @@ const { hasSidebar } = useSidebar();
   }
 }
 
+/* Brand + "/ DOCS" is 268px wide and nowrap, so with the search and hamburger
+   buttons the bar is 396px: wider than any phone under 404px. */
+@media (max-width: 404px) {
+  .title {
+    font-size: 14px;
+  }
+
+  .docs-title {
+    display: none;
+  }
+}
+
 .logo {
   margin-right: 8px;
   height: var(--vp-nav-logo-height);
