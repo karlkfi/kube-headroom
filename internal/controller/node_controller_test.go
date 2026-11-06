@@ -439,6 +439,77 @@ var _ = Describe("NodeReconciler", func() {
 		Expect(after.ResourceVersion).To(Equal(rv), "steady-state reconcile should issue no patch")
 	})
 
+	It("splits the target onto a native sidecar with a CPU request", func() {
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		pod := &corev1.Pod{Name: "native", Namespace: nsA, Spec: corev1.PodSpec{
+			NodeName:       node,
+			Containers:     []corev1.Container{qosContainer(cApp, 1000, 0, 0, 0)},
+			InitContainers: []corev1.Container{sidecarOf(qosContainer("side", 500, 0, 0, 0))},
+		}}
+		Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+
+		reconcileNode(node)
+
+		var applied corev1.Pod
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &applied)).To(Succeed())
+		Expect(applied.Spec.Containers[0].Resources.Limits.Cpu().MilliValue()).To(Equal(int64(5333)))
+		Expect(applied.Spec.InitContainers[0].Resources.Limits.Cpu().MilliValue()).To(Equal(int64(2667)))
+
+		rv := applied.ResourceVersion
+		reconcileNode(node)
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &applied)).To(Succeed())
+		Expect(applied.ResourceVersion).To(Equal(rv), "steady-state reconcile should issue no patch")
+	})
+
+	It("resizes every container of a pod with two apps and two native sidecars", func() {
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		pod := &corev1.Pod{Name: "two-two", Namespace: nsA, Spec: corev1.PodSpec{
+			NodeName:   node,
+			Containers: []corev1.Container{qosContainer(cApp, 1000, 0, 0, 0), qosContainer("app2", 500, 0, 0, 0)},
+			InitContainers: []corev1.Container{
+				sidecarOf(qosContainer("side", 250, 0, 0, 0)),
+				sidecarOf(qosContainer("side2", 250, 0, 0, 0)),
+			},
+		}}
+		Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+
+		reconcileNode(node)
+
+		var applied corev1.Pod
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &applied)).To(Succeed())
+		Expect(applied.Spec.Containers[0].Resources.Limits.Cpu().MilliValue()).To(Equal(int64(4000)))
+		Expect(applied.Spec.Containers[1].Resources.Limits.Cpu().MilliValue()).To(Equal(int64(2000)))
+		Expect(applied.Spec.InitContainers[0].Resources.Limits.Cpu().MilliValue()).To(Equal(int64(1000)))
+		Expect(applied.Spec.InitContainers[1].Resources.Limits.Cpu().MilliValue()).To(Equal(int64(1000)))
+	})
+
+	It("resizes a pod whose only CPU request is on its native sidecar", func() {
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		pod := &corev1.Pod{Name: "side-only", Namespace: nsA, Spec: corev1.PodSpec{
+			NodeName:       node,
+			Containers:     []corev1.Container{{Name: cApp, Image: imgBusybox}},
+			InitContainers: []corev1.Container{sidecarOf(qosContainer("side", 500, 0, 0, 0))},
+		}}
+		Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+
+		reconcileNode(node)
+
+		var applied corev1.Pod
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: nsA, Name: "side-only"}, &applied)).To(Succeed())
+		Expect(applied.Spec.InitContainers[0].Resources.Limits.Cpu().MilliValue()).To(BeNumerically(">", 500))
+		_, hasLimit := applied.Spec.Containers[0].Resources.Limits[corev1.ResourceCPU]
+		Expect(hasLimit).To(BeFalse(), "a request-less app container must have no limits.cpu")
+	})
+
 	It("annotates a managed pod with its computed status (§8.1)", func() {
 		applyConfig(false)
 		makeManagedNamespace()

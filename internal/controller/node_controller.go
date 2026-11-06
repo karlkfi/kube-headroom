@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -330,13 +331,20 @@ func (r *NodeReconciler) applyResize(ctx context.Context, pod *corev1.Pod, targe
 		return nil
 	}
 
-	containers := make([]any, 0, len(perContainer))
+	// A native sidecar lives under initContainers; the apiserver reads one listed
+	// under containers as an added container and refuses the patch.
+	spec := map[string]any{}
 	for _, c := range rcs {
 		m, ok := perContainer[c.Name]
 		if !ok {
 			continue
 		}
-		containers = append(containers, map[string]any{
+		field := "containers"
+		if slices.ContainsFunc(pod.Spec.InitContainers, func(i corev1.Container) bool { return i.Name == c.Name }) {
+			field = "initContainers"
+		}
+		list, _ := spec[field].([]any)
+		spec[field] = append(list, map[string]any{
 			"name": c.Name,
 			"resources": map[string]any{
 				"limits": map[string]any{
@@ -353,7 +361,7 @@ func (r *NodeReconciler) applyResize(ctx context.Context, pod *corev1.Pod, targe
 			"name":      pod.Name,
 			"namespace": pod.Namespace,
 		},
-		"spec": map[string]any{"containers": containers},
+		"spec": spec,
 	}
 	data, err := json.Marshal(obj)
 	if err != nil {
