@@ -24,8 +24,9 @@ const (
 
 // limitRangeSpecs covers design §8.3 and §6.4 end to end: a raise stops at a
 // LimitRange max instead of failing, and the refusals a clamp cannot prevent name
-// who refused them in the event, the log and the metric. Like headroomSpecs it runs
-// inside the "Manager" Ordered Describe, which leaves the metrics binding in place.
+// who refused them in the event, the log and the metric. It runs inside the "Manager"
+// Ordered Describe, which leaves the metrics binding in place, and removes its pods
+// before the slack scenarios in headroomSpecs size their neighbor.
 func limitRangeSpecs() {
 	Context("LimitRange caps and resize refusals", Ordered, func() {
 		var workerNode string
@@ -45,7 +46,7 @@ func limitRangeSpecs() {
 
 		AfterAll(func() {
 			for _, ns := range []string{clampNamespace, refusedNamespace, quotaNamespace} {
-				_, _ = kubectl("delete", "ns", ns, "--ignore-not-found", "--wait=false")
+				_, _ = kubectl("delete", "ns", ns, "--ignore-not-found")
 			}
 			_, _ = kubectl("delete", "headroomconfig", "cluster", "--ignore-not-found")
 		})
@@ -60,6 +61,9 @@ func limitRangeSpecs() {
 				g.Expect(containerLimitMilli(g, clampNamespace, "capped")).To(Equal(int64(500)))
 			}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
 
+			Eventually(func() string {
+				return eventNotes(clampNamespace, "CPULimitAdjusted")
+			}).WithTimeout(30 * time.Second).WithPolling(time.Second).Should(ContainSubstring("200m → 500m"))
 			Expect(resizeResultCount(resultLabelLimitRange)).To(Equal(before), "the clamp must prevent the refusal")
 		})
 
@@ -88,7 +92,7 @@ func limitRangeSpecs() {
 			// The controller recomputes on a pod event, not on a LimitRange change.
 			applyLimitedPod("nudge", neighborNamespace, workerNode, 10, 20)
 			DeferCleanup(func() {
-				_, _ = kubectl("delete", "pod", "nudge", "-n", neighborNamespace, "--ignore-not-found", "--wait=false")
+				_, _ = kubectl("delete", "pod", "nudge", "-n", neighborNamespace, "--ignore-not-found")
 			})
 
 			Eventually(func() string {
@@ -232,30 +236,29 @@ var scrapeSeq int
 // NetworkPolicy admits only that namespace). Every result series is pre-created, so a
 // missing one fails rather than reading as 0.
 func resizeResultCount(result string) float64 {
-	token, err := serviceAccountToken()
-	Expect(err).NotTo(HaveOccurred())
-
 	scrapeSeq++
 	pod := fmt.Sprintf("curl-resize-results-%d", scrapeSeq)
-	_, err = kubectl("run", pod, "--restart=Never", "--namespace", namespace, "--image=curlimages/curl:latest",
+	// The pod reads its own token, so the token stays out of the logged command.
+	_, err := kubectl("run", pod, "--restart=Never", "--namespace", namespace, "--image=curlimages/curl:latest",
 		"--overrides", fmt.Sprintf(`{"spec":{"serviceAccountName":%q,"containers":[{
 			"name":"curl","image":"curlimages/curl:latest","command":["/bin/sh","-c"],
-			"args":["curl -sS -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics"],
+			"args":["for i in $(seq 1 30); do curl -sS -k -H \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" https://%s.%s.svc.cluster.local:8443/metrics && exit 0 || sleep 2; done; exit 1"],
 			"securityContext":{"readOnlyRootFilesystem":true,"allowPrivilegeEscalation":false,
 				"capabilities":{"drop":["ALL"]},"runAsNonRoot":true,"runAsUser":1000,
 				"seccompProfile":{"type":"RuntimeDefault"}}}]}}`,
-			serviceAccountName, token, metricsServiceName, namespace))
+			serviceAccountName, metricsServiceName, namespace))
 	Expect(err).NotTo(HaveOccurred())
 	defer func() {
 		_, _ = kubectl("delete", "pod", pod, "-n", namespace, "--ignore-not-found", "--wait=false")
 	}()
 
-	Eventually(func(g Gomega) {
-		g.Expect(podPhase(g, namespace, pod)).To(Equal("Succeeded"))
-	}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
+	Eventually(func(g Gomega) string {
+		return podPhase(g, namespace, pod)
+	}).WithTimeout(3 * time.Minute).WithPolling(time.Second).Should(Or(Equal("Succeeded"), Equal("Failed")))
 
 	out, err := kubectl("logs", pod, "-n", namespace)
 	Expect(err).NotTo(HaveOccurred())
+	Expect(podPhase(Default, namespace, pod)).To(Equal("Succeeded"), "scrape failed: %s", out)
 	prefix := fmt.Sprintf(`headroom_resizes_total{result=%q} `, result)
 	for line := range strings.Lines(out) {
 		if value, ok := strings.CutPrefix(strings.TrimSpace(line), prefix); ok {
