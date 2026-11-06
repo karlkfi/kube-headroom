@@ -100,6 +100,16 @@ var _ = Describe("NodeReconciler and namespace LimitRanges (§8.3)", func() {
 		return eligibility.LimitRangeCapMilli(pod, eligibility.ResizableContainers(pod), list.Items)
 	}
 
+	limitSum := func(pod *corev1.Pod) int64 {
+		var got corev1.Pod
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &got)).To(Succeed())
+		var sum int64
+		for _, c := range slices.Concat(got.Spec.Containers, got.Spec.InitContainers) {
+			sum += c.Resources.Limits.Cpu().MilliValue()
+		}
+		return sum
+	}
+
 	ratioOf := func(typ corev1.LimitType, ratio string) corev1.LimitRangeItem {
 		return corev1.LimitRangeItem{Type: typ, MaxLimitRequestRatio: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(ratio)}}
 	}
@@ -200,14 +210,8 @@ var _ = Describe("NodeReconciler and namespace LimitRanges (§8.3)", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(result(resultLimitRangeDenied)).To(Equal(denied), "the clamp must prevent the refusal")
 
-			var got corev1.Pod
-			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &got)).To(Succeed())
-			var sum int64
-			for _, c := range slices.Concat(got.Spec.Containers, got.Spec.InitContainers) {
-				sum += c.Resources.Limits.Cpu().MilliValue()
-			}
-			Expect(sum).To(Equal(wantLimit), "the quantum takes the cap down to its grid")
-			Expect(r.applyResize(ctx, &got, wantCap)).To(Succeed(), "the cap itself must be admitted")
+			Expect(limitSum(pod)).To(Equal(wantLimit), "the quantum takes the cap down to its grid")
+			Expect(r.applyResize(ctx, pod, wantCap)).To(Succeed(), "the cap itself must be admitted")
 		},
 		Entry("round requests", "1.25",
 			[]corev1.Container{qosContainer("", 250, 260, 0, 0), qosContainer("", 150, 160, 0, 0)}, nil,
@@ -222,6 +226,31 @@ var _ = Describe("NodeReconciler and namespace LimitRanges (§8.3)", func() {
 		Entry("a larger ratio", "2.5",
 			[]corev1.Container{qosContainer("", 101, 150, 0, 0), qosContainer("", 99, 150, 0, 0)}, nil,
 			int64(500), int64(498), int64(490)),
+	)
+
+	// The documented cost of that safety (§8.3): a very small request holds the whole
+	// pod at its total request, though a higher target would split inside the rule.
+	DescribeTable("stops short of a fractional ratio over a very small request",
+		func(containers []corev1.Container, wantDenied, wantLimit, admitted int64) {
+			node := nextNode()
+			makeNodeWithMemory(node, 8)
+			pod := createShapedPod(node, containers, nil)
+			createLimitRange("rule", ratioOf(corev1.LimitTypeContainer, "1.05"))
+			Expect(capOf(pod)).To(Equal(eligibility.PodCPURequestMilli(eligibility.ResizableContainers(pod))))
+
+			denied := result(resultLimitRangeDenied)
+			_, err := r.Reconcile(ctx, reconcile.Request{Name: node})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result(resultLimitRangeDenied)).To(Equal(denied + float64(wantDenied)))
+			Expect(limitSum(pod)).To(Equal(wantLimit))
+			Expect(r.applyResize(ctx, pod, admitted)).To(Succeed(), "a higher target was available")
+		},
+		Entry("a memory-pinned pod's QoS floor is refused",
+			[]corev1.Container{qosContainer("", 100, 200, 64, 64), qosContainer("", 10, 20, 64, 64)},
+			int64(1), int64(220), int64(115)),
+		Entry("a plain pod gets no burst",
+			[]corev1.Container{qosContainer("", 1000, 2000, 0, 0), qosContainer("", 10, 20, 0, 0)},
+			int64(0), int64(1010), int64(1060)),
 	)
 
 	It("brings a running pod's limit down to a max below it", func() {

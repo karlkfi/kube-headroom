@@ -45,7 +45,10 @@ properties; the ResourceQuota one is the sharp edge.
   personality" is bounded; document it for tenants who wonder why their limit
   plateaus. A pod's limit is split across its containers by request, so a
   per-container `max` stops the pod when the container with the largest request
-  reaches it. A new or changed LimitRange applies when the node next reconciles.
+  reaches it. A fractional per-container ratio stops a little short of ratio ×
+  total, and well short when a container has a very small request: 1000m + 10m
+  at 1.05 gets no burst. A whole-number ratio has no such gap. A new or changed
+  LimitRange applies when the node next reconciles.
   A `max` below a running pod's request leaves no limit the apiserver will admit,
   which surfaces as [`limitrange-denied`](#resize-outcomes).
 - **VPA, if present, must be `controlledValues: RequestsOnly`** on managed pods.
@@ -254,6 +257,9 @@ quota. Fix the quota (see [Preflight](#preflight)); do not tune around it. A
 sustained `limitrange-denied` count means something Headroom cannot change breaks
 a LimitRange: a running pod's request, or the limit of a request-less or init
 container. The event quotes the rule. Raise the `max`, or recreate the pod inside it.
+The exception is a memory-pinned pod whose limit predates a fractional ratio and
+which has a very small request, such as 100m + 10m at 1.05: Headroom's cap leaves it
+no room above its request, so use a whole-number ratio.
 
 ---
 

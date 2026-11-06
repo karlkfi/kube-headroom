@@ -321,6 +321,19 @@ func TestLimitRangeCapMilli_NoRule(t *testing.T) {
 	}
 }
 
+func TestLimitRangeCapMilli_RatioPastInt64IsNoCap(t *testing.T) {
+	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{container(cApp, 1000, 2000)}}}
+	for name, typ := range map[string]corev1.LimitType{"container": corev1.LimitTypeContainer, "pod": corev1.LimitTypePod} {
+		huge := corev1.LimitRange{Spec: corev1.LimitRangeSpec{Limits: []corev1.LimitRangeItem{{
+			Type:                 typ,
+			MaxLimitRequestRatio: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("10000000000000")},
+		}}}}
+		if got := LimitRangeCapMilli(pod, ResizableContainers(pod), []corev1.LimitRange{huge}); got != 0 {
+			t.Errorf("%s: cap = %d, want 0", name, got)
+		}
+	}
+}
+
 func TestLimitRangeCapMilli_RuleLeavingNoRoomIsStillACap(t *testing.T) {
 	pod := &corev1.Pod{Spec: corev1.PodSpec{Containers: []corev1.Container{container(cApp, 100, 200), container("agent", 0, 500)}}}
 	tight := corev1.LimitRange{Spec: corev1.LimitRangeSpec{Limits: []corev1.LimitRangeItem{{

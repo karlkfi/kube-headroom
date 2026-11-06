@@ -250,8 +250,8 @@ func PodBookedCPUMilli(pod *corev1.Pod) int64 {
 	return reqs.Cpu().MilliValue()
 }
 
-// LimitRangeCapMilli is the largest pod target the given LimitRanges admit (§8.3),
-// or 0 when none of them bounds CPU. It restates each rule the apiserver checks on
+// LimitRangeCapMilli is the pod target a raise stops at under the given LimitRanges
+// (§8.3), or 0 when none of them bounds CPU. It restates each rule the apiserver checks on
 // a resize as a pod total. The target splits pro-rata by request (splitLimit), so a
 // per-container max binds through the largest request and a per-container ratio
 // through whichever request leaves the least room, while a per-pod rule also counts
@@ -303,10 +303,11 @@ func LimitRangeCapMilli(pod *corev1.Pod, rcs []ResizableContainer, limitRanges [
 	return max(int64(limit), 1) // 0 means no cap, and a rule leaving no room is still a cap
 }
 
-// containerRatioCapMilli is the largest pod target that keeps every container's
-// share within its own ratio limit. splitLimit rounds a share up to the next
-// milli-core, so a share at or below a whole limit stays there, where ratio×total
-// can round one past it.
+// containerRatioCapMilli is a pod target that keeps every container's share within
+// its own ratio limit however the remainders fall. splitLimit rounds a share up to
+// the next milli-core, so a share at or below a whole limit stays there, where
+// ratio×total can round one past it. A very small request can hold this near the
+// pod's total request even though a higher target would happen to split safely.
 func containerRatioCapMilli(rcs []ResizableContainer, ratioMilli int64, total float64) float64 {
 	limit := math.Inf(1)
 	for _, c := range rcs {
@@ -321,6 +322,9 @@ func containerRatioCapMilli(rcs []ResizableContainer, ratioMilli int64, total fl
 // It repeats LimitRanger's float comparison, which refuses some limits exactly at
 // the ratio: 161m over a 20m request reads as past a ratio of 8.05.
 func ratioLimitMilli(ratioMilli, requestMilli int64) int64 {
+	if float64(ratioMilli)*float64(requestMilli) >= math.MaxInt64 {
+		return math.MaxInt64 // past int64, and no limit comes near it
+	}
 	limit := ratioMilli * requestMilli / 1000
 	if float64(limit)/float64(requestMilli)*1000 > float64(ratioMilli) {
 		limit--
