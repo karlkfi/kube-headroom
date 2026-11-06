@@ -30,14 +30,6 @@ rules:
   verbs:
   - patch
 - apiGroups:
-  - ""
-  - events.k8s.io
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
   - autoscaling.k8s.io
   resources:
   - verticalpodautoscalers
@@ -45,6 +37,13 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 - apiGroups:
   - kube-headroom.dev
   resources:

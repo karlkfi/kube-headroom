@@ -20,6 +20,8 @@ const (
 	clampNamespace   = "headroom-e2e-clamp"
 	refusedNamespace = "headroom-e2e-refused"
 	quotaNamespace   = "headroom-e2e-quota"
+	// leaderLease is LeaderElectionID in cmd/main.go.
+	leaderLease = "605152a6.dev"
 )
 
 // limitRangeSpecs covers design §8.3 and §6.4 end to end: a raise stops at a
@@ -219,7 +221,7 @@ func eventNotes(ns, reason string) string {
 
 // controllerLogLine returns the manager's resize-refusal log line for a pod key.
 func controllerLogLine(podKey string) string {
-	out, err := kubectl("logs", "deployment/"+controllerDeployment, "-n", namespace)
+	out, err := kubectl("logs", leaderPod(), "-n", namespace)
 	Expect(err).NotTo(HaveOccurred())
 	for line := range strings.Lines(out) {
 		if strings.Contains(line, "resize refused") && strings.Contains(line, podKey) {
@@ -229,24 +231,37 @@ func controllerLogLine(podKey string) string {
 	return ""
 }
 
+// leaderPod names the manager replica holding the leader lease, the only one that
+// reconciles: the other's log is silent on resizes and its counters stay at 0.
+func leaderPod() string {
+	out, err := kubectl("get", "lease", leaderLease, "-n", namespace, "-o", "jsonpath={.spec.holderIdentity}")
+	Expect(err).NotTo(HaveOccurred())
+	pod, _, found := strings.Cut(strings.TrimSpace(out), "_")
+	Expect(found).To(BeTrue(), "lease holder %q has no pod_uuid form", out)
+	return pod
+}
+
 var scrapeSeq int
 
-// resizeResultCount scrapes headroom_resizes_total for one result from the manager's
+// resizeResultCount scrapes headroom_resizes_total for one result from the leader's
 // /metrics, through a one-shot pod like the curl-metrics spec's (the metrics
-// NetworkPolicy admits only that namespace). Every result series is pre-created, so a
-// missing one fails rather than reading as 0.
+// NetworkPolicy admits only that namespace). It goes to the pod and not the Service,
+// which could answer from the standby's zeros. Every result series is pre-created, so
+// a missing one fails rather than reading as 0.
 func resizeResultCount(result string) float64 {
 	scrapeSeq++
 	pod := fmt.Sprintf("curl-resize-results-%d", scrapeSeq)
+	leaderIP, err := kubectl("get", "pod", leaderPod(), "-n", namespace, "-o", "jsonpath={.status.podIP}")
+	Expect(err).NotTo(HaveOccurred())
 	// The pod reads its own token, so the token stays out of the logged command.
-	_, err := kubectl("run", pod, "--restart=Never", "--namespace", namespace, "--image=curlimages/curl:latest",
+	_, err = kubectl("run", pod, "--restart=Never", "--namespace", namespace, "--image=curlimages/curl:latest",
 		"--overrides", fmt.Sprintf(`{"spec":{"serviceAccountName":%q,"containers":[{
 			"name":"curl","image":"curlimages/curl:latest","command":["/bin/sh","-c"],
-			"args":["for i in $(seq 1 30); do curl -sS -k -H \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" https://%s.%s.svc.cluster.local:8443/metrics && exit 0 || sleep 2; done; exit 1"],
+			"args":["for i in $(seq 1 30); do curl -sS -k -H \"Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\" https://%s:8443/metrics && exit 0 || sleep 2; done; exit 1"],
 			"securityContext":{"readOnlyRootFilesystem":true,"allowPrivilegeEscalation":false,
 				"capabilities":{"drop":["ALL"]},"runAsNonRoot":true,"runAsUser":1000,
 				"seccompProfile":{"type":"RuntimeDefault"}}}]}}`,
-			serviceAccountName, metricsServiceName, namespace))
+			serviceAccountName, strings.TrimSpace(leaderIP)))
 	Expect(err).NotTo(HaveOccurred())
 	defer func() {
 		_, _ = kubectl("delete", "pod", pod, "-n", namespace, "--ignore-not-found", "--wait=false")
