@@ -301,6 +301,7 @@
           <ul>
             <li><strong>Trusted, single-tenant clusters</strong> — just omit CPU limits (or set <code>--cpu-cfs-quota=false</code>). The kernel already shares fairly, and nothing ever throttles. You don't need Headroom.</li>
             <li><strong>Guaranteed or BestEffort pods</strong> — structurally excluded; resize can't change QoS class.</li>
+            <li><strong>Pods with pod-level resources</strong> — excluded; a resize is refused or stopped at the pod-level limit, depending on the Kubernetes version.</li>
             <li><strong>Gang-scheduled synchronous training</strong> — different ceilings per worker make stragglers. Opt out.</li>
             <li><strong>Static CPU Manager / Windows nodes</strong> — in-place resize is unavailable there.</li>
           </ul>

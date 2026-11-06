@@ -58,6 +58,8 @@ metadata:
 
 Pods that are Guaranteed QoS, BestEffort, set pod-level `spec.resources`, or have
 no CPU request are never managed regardless of labels (see [applicability](applicability.md)).
+A pod with pod-level `spec.resources` gets no birth limit from Headroom either, so
+if neither the pod nor its containers set a CPU limit, it has no CPU ceiling at all.
 
 ## Every container that does work needs a CPU request
 

@@ -91,8 +91,8 @@ example.
 ## Non-goals
 
 Memory/GPU/storage management, usage-based reclamation, managing Guaranteed or
-BestEffort pods, and any influence on scheduling (Headroom only adjusts limits
-*after* placement). Windows nodes and nodes using static CPU/Memory Manager
+BestEffort pods or pods with pod-level resources, and any influence on scheduling
+(Headroom only adjusts limits *after* placement). Windows nodes and nodes using static CPU/Memory Manager
 policies are structurally excluded (in-place resize is unavailable there).
 
 ## Development
