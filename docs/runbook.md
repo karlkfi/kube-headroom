@@ -38,7 +38,8 @@ properties; the ResourceQuota one is the sharp edge.
   ```
 
   With no arguments it checks every namespace already labeled
-  `kube-headroom.dev/mode=managed`. It exits 1 when a namespace has a ResourceQuota
+  `kube-headroom.dev/mode=managed`; it does not evaluate a `HeadroomConfig`
+  `namespaceSelector`, so name those namespaces yourself. It exits 1 when a namespace has a ResourceQuota
   with `limits.cpu` set, and prints which one. That namespace must drop the
   `limits.cpu` hard limit (keep `requests.cpu`) before enrollment, or it will see
   resize 403s. It exits 2 when it could not check, such as a namespace that does not
@@ -48,7 +49,7 @@ properties; the ResourceQuota one is the sharp edge.
   LimitRange changes, since nothing stops a tenant adding `limits.cpu` later.
 - **LimitRange `max` caps what Headroom can set.** A CPU `max` or
   `maxLimitRequestRatio`, per container or per pod, clamps the achievable ceiling.
-  This is safe (raises just stop at the cap) but means the "empty-node
+  Raises just stop at the cap, but that means the "empty-node
   personality" is bounded; document it for tenants who wonder why their limit
   plateaus. A pod's limit is split across its containers by request, so a
   per-container `max` stops the pod when the container with the largest request

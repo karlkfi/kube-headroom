@@ -13,8 +13,12 @@
 #
 # Exit status: 0 clean (or warnings only), 1 at least one ERROR (or any WARN
 # under --strict), 2 the check could not run (bad usage, kubectl failure).
-# Uses the current kubectl context; set KUBECONFIG/--context via the environment.
+# Needs kubectl and jq. Uses the current kubectl context; set KUBECONFIG/--context via the environment.
 set -euo pipefail
+
+for tool in kubectl jq; do
+  command -v "${tool}" >/dev/null || { echo "${tool} not found on PATH" >&2; exit 2; }
+done
 
 strict=0
 namespaces=()
@@ -29,9 +33,10 @@ done
 
 if [[ ${#namespaces[@]} -eq 0 ]]; then
   ns_json="$(kubectl get namespaces -l kube-headroom.dev/mode=managed -o json)" || exit 2
+  names="$(jq -r '.items[].metadata.name' <<<"${ns_json}")" || exit 2
   while IFS= read -r ns; do
-    namespaces+=("${ns}")
-  done < <(jq -r '.items[].metadata.name' <<<"${ns_json}")
+    [[ -n "${ns}" ]] && namespaces+=("${ns}")
+  done <<<"${names}"
   if [[ ${#namespaces[@]} -eq 0 ]]; then
     echo "no namespaces labeled kube-headroom.dev/mode=managed; pass namespaces to check" >&2
     exit 2
@@ -47,21 +52,23 @@ for ns in "${namespaces[@]}"; do
   quotas="$(kubectl get resourcequota -n "${ns}" -o json)" || exit 2
   ranges="$(kubectl get limitrange -n "${ns}" -o json)" || exit 2
 
+  quota_errs="$(jq -r '.items[] | select(.spec.hard["limits.cpu"]) |
+    "ResourceQuota \(.metadata.name) sets limits.cpu=\(.spec.hard["limits.cpu"]); drop it and quota requests.cpu instead (runbook#preflight)"' <<<"${quotas}")" || exit 2
   while IFS= read -r line; do
     [[ -n "${line}" ]] || continue
     echo "ERROR ${ns}: ${line}"
     errors=$((errors + 1))
-  done < <(jq -r '.items[] | select(.spec.hard["limits.cpu"]) |
-    "ResourceQuota \(.metadata.name) sets limits.cpu=\(.spec.hard["limits.cpu"]); drop it and quota requests.cpu instead (runbook#preflight)"' <<<"${quotas}")
+  done <<<"${quota_errs}"
 
+  range_warns="$(jq -r '.items[] | .metadata.name as $n | .spec.limits[]? | .type as $t |
+    (if .max.cpu then "LimitRange \($n) (\($t)) caps CPU limits at max=\(.max.cpu); raises stop there (runbook#preflight)" else empty end),
+    (if .maxLimitRequestRatio.cpu then "LimitRange \($n) (\($t)) caps limit/request at \(.maxLimitRequestRatio.cpu); raises stop there (runbook#preflight)" else empty end),
+    (if .default.cpu then "LimitRange \($n) (\($t)) sets default.cpu=\(.default.cpu); it also fills defaultRequest and replaces the webhook birth limit (runbook#limitrange-default)" else empty end)' <<<"${ranges}")" || exit 2
   while IFS= read -r line; do
     [[ -n "${line}" ]] || continue
     echo "WARN  ${ns}: ${line}"
     warnings=$((warnings + 1))
-  done < <(jq -r '.items[] | .metadata.name as $n | .spec.limits[]? | .type as $t |
-    (if .max.cpu then "LimitRange \($n) (\($t)) caps CPU limits at max=\(.max.cpu); raises stop there (runbook#preflight)" else empty end),
-    (if .maxLimitRequestRatio.cpu then "LimitRange \($n) (\($t)) caps limit/request at \(.maxLimitRequestRatio.cpu); raises stop there (runbook#preflight)" else empty end),
-    (if .default.cpu then "LimitRange \($n) (\($t)) sets default.cpu=\(.default.cpu); it also fills defaultRequest and replaces the webhook birth limit (runbook#limitrange-default)" else empty end)' <<<"${ranges}")
+  done <<<"${range_warns}"
 done
 
 echo "checked ${#namespaces[@]} namespace(s): ${errors} error(s), ${warnings} warning(s)"
