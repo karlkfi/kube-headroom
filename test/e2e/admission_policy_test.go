@@ -23,6 +23,11 @@ const (
 	admissionPolicyDir = "config/samples/admission-policy"
 	policyNamespace    = "headroom-e2e-policy"
 	policyName         = "kube-headroom-require-cpu-requests"
+
+	levelMemory     = "{limits: {memory: 128Mi}}"
+	levelCPURequest = "{requests: {cpu: 300m}}"
+	levelCPULimit   = "{limits: {cpu: \"2\"}}"
+	levelEmpty      = "{}"
 )
 
 // admissionPolicySpecs registers the admission-policy scenarios. Like
@@ -70,7 +75,64 @@ func admissionPolicySpecs() {
 			out, err := dryRunSidecarPod("dind-unmanaged-ns", neighborNamespace, "", "")
 			Expect(err).NotTo(HaveOccurred(), out)
 		})
+
+		// Headroom never caps a pod with pod-level resources, so it needs a ceiling of its own.
+		DescribeTable("pod-level resources without a CPU ceiling",
+			func(mode, level string, jobLimit, sidecarLimit, wantDenied string) {
+				out, err := dryRunPodLevelPod("pod-level", mode, level, jobLimit, sidecarLimit)
+				if wantDenied == "" {
+					Expect(err).NotTo(HaveOccurred(), out)
+					return
+				}
+				Expect(err).To(HaveOccurred(), "pod should be denied, got: %s", out)
+				Expect(out).To(ContainSubstring(wantDenied))
+			},
+			Entry("rejects memory only, naming both containers", "", levelMemory, "", "", "a CPU limit on: job, dind"),
+			Entry("rejects memory only, naming the unlimited container", "", levelMemory, "1", "", "a CPU limit on: dind"),
+			Entry("rejects CPU request only", "", levelCPURequest, "1", "", "a CPU limit on: dind"),
+			Entry("admits a limit on every container", "", levelMemory, "1", "200m", ""),
+			Entry("admits a pod-level CPU limit", "", levelCPULimit, "", "", ""),
+			Entry("admits an empty block, which Headroom still manages", "", levelEmpty, "", "", ""),
+			Entry("admits an opted-out pod", "unmanaged", levelMemory, "", "", ""),
+		)
 	})
+}
+
+// dryRunPodLevelPod server-side dry-run creates a pod in the policy namespace with
+// pod-level resources level, and a job container and "dind" sidecar that request
+// CPU and carry the given CPU limits ("" for none).
+func dryRunPodLevelPod(name, mode, level, jobLimit, sidecarLimit string) (string, error) {
+	labels := ""
+	if mode != "" {
+		labels = fmt.Sprintf("\n  labels:\n    kube-headroom.dev/mode: %s", mode)
+	}
+	resources := func(limit string) string {
+		if limit == "" {
+			return "{requests: {cpu: 100m}}"
+		}
+		return fmt.Sprintf("{requests: {cpu: 100m}, limits: {cpu: %q}}", limit)
+	}
+	manifest := fmt.Sprintf(`apiVersion: v1
+kind: Pod
+metadata:
+  name: %s
+  namespace: %s%s
+spec:
+  resources: %s
+  initContainers:
+    - name: dind
+      image: %s
+      restartPolicy: Always
+      resources: %s
+  containers:
+    - name: job
+      image: %s
+      resources: %s
+`, name, policyNamespace, labels, level, pauseImage, resources(sidecarLimit), pauseImage, resources(jobLimit))
+
+	cmd := exec.Command("kubectl", "apply", "--dry-run=server", "-f", "-")
+	cmd.Stdin = strings.NewReader(manifest)
+	return utils.Run(cmd)
 }
 
 // dryRunSidecarPod server-side dry-run creates a pod shaped like the §6.3 escape:
