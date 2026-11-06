@@ -40,9 +40,12 @@ var _ = Describe("NodeReconciler deferred-resize gauge (§6.4)", func() {
 	})
 
 	It("drops the node's series when the node is forgotten", func() {
+		before := testutil.CollectAndCount(nodeResizesDeferred)
 		nodeResizesDeferred.WithLabelValues("gone-node").Set(3)
+		Expect(testutil.CollectAndCount(nodeResizesDeferred)).To(Equal(before + 1))
+
 		r, _ := newResizeErrReconciler("settled", nil)
 		r.forgetNode("gone-node")
-		Expect(testutil.CollectAndCount(nodeResizesDeferred)).NotTo(BeNumerically(">", 1))
+		Expect(testutil.CollectAndCount(nodeResizesDeferred)).To(Equal(before))
 	})
 })
