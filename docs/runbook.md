@@ -210,6 +210,33 @@ ceiling of at most 1 CPU (100m × the default `maxMultiplier` of 10), so the bui
 that ran there is throttled instead of unbounded. The request has to be sized by
 the team that knows where the work runs, which is what rejection forces.
 
+### A LimitRange CPU default: an option, with warnings
+
+<a id="limitrange-default"></a>
+A namespace LimitRange with `default.cpu` gives a pod with pod-level resources a
+fixed limit where it would otherwise have none, and Headroom never adjusts it. It
+applies to every pod in the namespace, not only those, so the
+[policy above](#require-cpu-requests) is the narrower way to close the gap.
+
+These were measured with `default.cpu: 2` in a managed namespace, on Kubernetes
+1.35 and 1.37 unless noted:
+
+- **`defaultRequest` is filled in from `default`.** A container with no CPU request
+  gets a request of 2 and books 2 CPUs. On 1.35, a request-less sidecar did this
+  and the app beside it fell from 580m to 145m.
+- **A pod requesting more than the default with no limit is refused at create.** A
+  request of 4 failed with `must be less than or equal to cpu limit of 2`.
+- **The webhook's birth limit is replaced.** On 1.35, a pod requesting 100m was born
+  at 2 instead of 200m. The controller still manages it afterwards.
+- **Some pods with pod-level resources are refused at create:** a pod-level CPU
+  limit below the default, and a pod-level CPU request with no container request.
+- **A container that pins memory and sets no CPU becomes Guaranteed** at request and
+  limit 2, so Headroom does not manage it.
+
+It can also let a request-less container pass the policy's request rule, because
+the default request would land before the policy runs. That is reasoned from the
+readings above, not run.
+
 ---
 
 ## Day-2: "my pod is throttled"
