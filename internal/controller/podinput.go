@@ -13,9 +13,11 @@ import (
 // backoff state already resolved) into the policy's reduced PodInput. The
 // pod-local eligibility gates live in internal/eligibility.
 func buildPodInput(pod *corev1.Pod, rcs []eligibility.ResizableContainer, managed bool) policy.PodInput {
+	request := eligibility.PodCPURequestMilli(rcs)
 	return policy.PodInput{
 		Key:               pod.Namespace + "/" + pod.Name,
-		RequestMilli:      eligibility.PodCPURequestMilli(rcs),
+		RequestMilli:      request,
+		BookedDeltaMilli:  eligibility.PodBookedCPUMilli(pod) - request,
 		CurrentLimitMilli: eligibility.PodCurrentLimitMilli(rcs),
 		Managed:           managed,
 		UserCapMilli:      eligibility.UserCapMilli(pod),

@@ -693,6 +693,10 @@ func podUpdateRelevant(e event.UpdateEvent) bool {
 	if oldPod.Spec.NodeName != newPod.Spec.NodeName {
 		return true
 	}
+	// A resize being actuated moves the booking through status alone.
+	if eligibility.PodBookedCPUMilli(oldPod) != eligibility.PodBookedCPUMilli(newPod) {
+		return true
+	}
 	if eligibility.PodTerminal(oldPod) != eligibility.PodTerminal(newPod) {
 		return true
 	}

@@ -1031,6 +1031,9 @@ k8s.io/component-base/tracing
 k8s.io/component-base/tracing/api/v1
 k8s.io/component-base/version
 k8s.io/component-base/zpages/features
+# k8s.io/component-helpers v0.37.2
+## explicit; go 1.26.0
+k8s.io/component-helpers/resource
 # k8s.io/klog/v2 v2.140.0
 ## explicit; go 1.21
 k8s.io/klog/v2
