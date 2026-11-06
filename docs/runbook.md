@@ -198,8 +198,8 @@ It also rejects a pod that sets pod-level `spec.resources` unless the pod has a
 CPU ceiling of its own: a pod-level CPU limit, or a CPU limit on every app and
 sidecar container. Headroom never caps these pods (design §6.3), so without the
 policy they can run unbounded. An empty `resources: {}` counts too: Kubernetes 1.35
-classes that pod BestEffort whatever its containers request, so Headroom leaves it
-uncapped, and the author can delete the block, which does nothing on any version.
+and 1.36.1 class that pod BestEffort whatever its containers request, so Headroom
+leaves it uncapped, and deleting the block puts the pod back under Headroom.
 On 1.37 this rejects a pod Headroom would have managed, until the block is deleted.
 
 The policy keeps its name, so re-running the `kubectl apply -k` above updates an

@@ -238,21 +238,21 @@ controller to reach in time.
 
 Pod-level resources disqualify a pod on every version, because a resize cannot
 be relied on there. Kubernetes 1.35 forbids resizing such a pod while the
-`InPlacePodLevelResourcesVerticalScaling` gate is off, which is its default. 1.37
-turns the gate on and allows a shrink, but refuses any container limit above the
-pod-level limit, and a pod that sets only memory can get a pod-level CPU limit
+`InPlacePodLevelResourcesVerticalScaling` gate is off, which is its default. 1.36.1
+and 1.37 have the gate on and allow a shrink, but refuse any container limit above
+a pod-level CPU limit, and on 1.37 a pod that sets only memory can get that limit
 filled in from its containers at create. A pod-level CPU limit, set or filled in,
 bounds the pod in its own cgroup. Without one, a container with no CPU limit has
 no ceiling at all, because Headroom gives it no birth limit and never resizes it;
 the optional admission policy rejects that shape where it is applied. The webhook
 applies the same gate, because the controller would never adjust a seed, and one
-above a pod-level CPU limit would fail the pod's create. The cost on 1.37 runs
-both ways. A pod could shrink on a full node and now keeps its limit, and a limit
+above a pod-level CPU limit would fail the pod's create. The cost with the gate on
+runs both ways. A pod could shrink on a full node and now keeps its limit, and a limit
 Headroom set before the upgrade stays until the pod is recreated, even with slack
 free. An empty `resources: {}` is not pod-level resources to this gate, but what
 happens next depends on the version: 1.37 keeps such a pod Burstable and Headroom
-manages it, while 1.35 classes it BestEffort whatever its containers request, so
-Headroom does not.
+manages it, while 1.35 and 1.36.1 class it BestEffort whatever its containers
+request, so Headroom does not.
 
 The request gate is **pod-level, not per-container**. A managed pod may contain a
 container with no CPU request; that container receives no limit (§5.4, it has no

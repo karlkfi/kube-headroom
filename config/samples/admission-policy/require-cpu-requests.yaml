@@ -46,8 +46,8 @@ spec:
             'cpu' in c.resources.requests &&
             quantity(c.resources.requests['cpu']).isGreaterThan(quantity('0'))))
           .map(c, c.name)
-    # Counts an empty `resources: {}` too: Kubernetes 1.35 classes that pod
-    # BestEffort whatever its containers request, so Headroom leaves it alone.
+    # Counts an empty `resources: {}` too: Kubernetes 1.35 and 1.36.1 class that
+    # pod BestEffort whatever its containers request, so Headroom leaves it alone.
     - name: podLevelWithoutCPULimit
       expression: >-
         has(object.spec.resources) &&
