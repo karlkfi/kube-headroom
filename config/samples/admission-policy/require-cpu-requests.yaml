@@ -46,12 +46,11 @@ spec:
             'cpu' in c.resources.requests &&
             quantity(c.resources.requests['cpu']).isGreaterThan(quantity('0'))))
           .map(c, c.name)
-    # An empty `resources: {}` sets nothing, so Headroom still manages that pod.
+    # Counts an empty `resources: {}` too: Kubernetes 1.35 classes that pod
+    # BestEffort whatever its containers request, so Headroom leaves it alone.
     - name: podLevelWithoutCPULimit
       expression: >-
         has(object.spec.resources) &&
-        ((has(object.spec.resources.requests) && size(object.spec.resources.requests) > 0) ||
-         (has(object.spec.resources.limits) && size(object.spec.resources.limits) > 0)) &&
         !(has(object.spec.resources.limits) && 'cpu' in object.spec.resources.limits)
     - name: noCPULimit
       expression: >-
@@ -66,8 +65,9 @@ spec:
       reason: Invalid
     - expression: '!variables.podLevelWithoutCPULimit || size(variables.noCPULimit) == 0'
       messageExpression: >-
-        'kube-headroom: Headroom does not cap a pod that sets spec.resources, and this
-        one has no CPU ceiling; set spec.resources.limits.cpu, or a CPU limit on: ' +
+        'kube-headroom: this pod sets spec.resources and has no CPU ceiling, and Headroom
+        may never cap it; delete spec.resources if it is empty, set
+        spec.resources.limits.cpu, or set a CPU limit on: ' +
         variables.noCPULimit.join(', ')
       reason: Invalid
 ---

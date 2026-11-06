@@ -92,7 +92,8 @@ func admissionPolicySpecs() {
 			Entry("rejects CPU request only", "", levelCPURequest, "1", "", "a CPU limit on: dind"),
 			Entry("admits a limit on every container", "", levelMemory, "1", "200m", ""),
 			Entry("admits a pod-level CPU limit", "", levelCPULimit, "", "", ""),
-			Entry("admits an empty block, which Headroom still manages", "", levelEmpty, "", "", ""),
+			Entry("rejects an empty block with no limit", "", levelEmpty, "", "", "a CPU limit on: job, dind"),
+			Entry("admits an empty block with a limit on every container", "", levelEmpty, "1", "200m", ""),
 			Entry("admits an opted-out pod", "unmanaged", levelMemory, "", "", ""),
 		)
 	})
