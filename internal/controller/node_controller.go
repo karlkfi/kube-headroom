@@ -174,6 +174,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	nodeFactor.WithLabelValues(req.Name).Set(stats.Factor)
 	nodeSlackCores.WithLabelValues(req.Name).Set(float64(stats.SlackMilli) / 1000.0)
 	nodeManagedPods.WithLabelValues(req.Name).Set(float64(stats.ManagedPods))
+	nodeResizesDeferred.WithLabelValues(req.Name).Set(float64(countDeferred(inputs, byKey)))
 
 	// Per-pod target-limit gauges — the §8.1 money-graph series. Set for every
 	// managed pod's computed target (the ceiling Headroom would/does enforce),
@@ -473,6 +474,7 @@ func (r *NodeReconciler) forgetNode(node string) {
 	nodeFactor.DeleteLabelValues(node)
 	nodeSlackCores.DeleteLabelValues(node)
 	nodeManagedPods.DeleteLabelValues(node)
+	nodeResizesDeferred.DeleteLabelValues(node)
 }
 
 // syncPodMetrics records the pods currently exporting a podLimitCores series for
@@ -640,6 +642,28 @@ func podResizeInfeasible(pod *corev1.Pod) bool {
 	return false
 }
 
+// podResizeDeferred reports whether the kubelet is holding a pending resize as
+// Deferred (§6.4) via the PodResizePending condition.
+func podResizeDeferred(pod *corev1.Pod) bool {
+	for _, c := range pod.Status.Conditions {
+		if c.Type == corev1.PodResizePending && c.Reason == corev1.PodReasonDeferred {
+			return true
+		}
+	}
+	return false
+}
+
+// countDeferred counts the managed pods whose resize the kubelet has deferred.
+func countDeferred(inputs []policy.PodInput, byKey map[string]*corev1.Pod) int {
+	n := 0
+	for _, in := range inputs {
+		if pod := byKey[in.Key]; in.Managed && pod != nil && podResizeDeferred(pod) {
+			n++
+		}
+	}
+	return n
+}
+
 // SetupWithManager registers the node field index and the pod/node watches that
 // feed node keys into the reconciler, debounced per §6.2.
 func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -691,7 +715,8 @@ func (r *NodeReconciler) podEventHandler() handler.EventHandler {
 
 // podUpdateRelevant filters pod updates down to the ones that can change a
 // node's slack or a managed limit (§6.2 step 1): binding, terminal transition,
-// or a CPU-request change (e.g. VPA resizing an unmanaged pod).
+// a CPU-request change (e.g. VPA resizing an unmanaged pod), or the kubelet
+// starting or ending a Deferred resize (§6.4).
 func podUpdateRelevant(e event.UpdateEvent) bool {
 	oldPod, ok1 := e.ObjectOld.(*corev1.Pod)
 	newPod, ok2 := e.ObjectNew.(*corev1.Pod)
@@ -707,6 +732,9 @@ func podUpdateRelevant(e event.UpdateEvent) bool {
 	}
 	if eligibility.PodTerminal(oldPod) != eligibility.PodTerminal(newPod) {
 		return true
+	}
+	if podResizeDeferred(oldPod) != podResizeDeferred(newPod) {
+		return true // the deferred-resize gauge is set only in Reconcile
 	}
 	return eligibility.PodCPURequestMilli(eligibility.ResizableContainers(oldPod)) != eligibility.PodCPURequestMilli(eligibility.ResizableContainers(newPod))
 }
