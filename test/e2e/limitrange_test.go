@@ -87,10 +87,11 @@ func limitRangeSpecs() {
 				g.Expect(podPhase(g, refusedNamespace, "refused")).To(Equal("Running"))
 			}).WithTimeout(2 * time.Minute).WithPolling(time.Second).Should(Succeed())
 
+			// Read first: a scrape pod is itself a pod event that can reconcile the worker.
+			before, quotaBefore := resizeResultCount(resultLabelLimitRange), resizeResultCount(resultLabelQuota)
 			applyManifest(limitRangeManifest(refusedNamespace, "late", 50))
 			awaitAdmissionRefusal(refusedNamespace, "maximum cpu usage per Container is 50m")
 
-			before, quotaBefore := resizeResultCount(resultLabelLimitRange), resizeResultCount(resultLabelQuota)
 			// The controller recomputes on a pod event, not on a LimitRange change.
 			applyLimitedPod("nudge", neighborNamespace, workerNode, 10, 20)
 			DeferCleanup(func() {
