@@ -249,7 +249,10 @@ applies the same gate, because the controller would never adjust a seed, and one
 above a pod-level CPU limit would fail the pod's create. The cost on 1.37 runs
 both ways. A pod could shrink on a full node and now keeps its limit, and a limit
 Headroom set before the upgrade stays until the pod is recreated, even with slack
-free. An empty `resources: {}` sets nothing and does not count.
+free. An empty `resources: {}` is not pod-level resources to this gate, but what
+happens next depends on the version: 1.37 keeps such a pod Burstable and Headroom
+manages it, while 1.35 classes it BestEffort whatever its containers request, so
+Headroom does not.
 
 The request gate is **pod-level, not per-container**. A managed pod may contain a
 container with no CPU request; that container receives no limit (§5.4, it has no

@@ -197,10 +197,15 @@ request on any container and Headroom cannot cap them either. Regular
 It also rejects a pod that sets pod-level `spec.resources` unless the pod has a
 CPU ceiling of its own: a pod-level CPU limit, or a CPU limit on every app and
 sidecar container. Headroom never caps these pods (design §6.3), so without the
-policy they can run unbounded. An empty `resources: {}` passes, because Headroom
-still manages that pod. The policy keeps its name, so re-running the
-`kubectl apply -k` above updates an existing install in place, and this rule does
-not apply until you do.
+policy they can run unbounded. An empty `resources: {}` counts too: Kubernetes 1.35
+classes that pod BestEffort whatever its containers request, so Headroom leaves it
+uncapped, and the author can delete the block, which does nothing on any version.
+On 1.37 this rejects a pod Headroom would have managed, until the block is deleted.
+
+The policy keeps its name, so re-running the `kubectl apply -k` above updates an
+existing install in place, and this rule does not apply until you do. Under the
+sample's `Deny` it enforces at once, so a Deployment with this shape fails its next
+rollout with `FailedCreate`; trial it with `[Warn, Audit]` first, as in step 2.
 
 **No mutating variant ships.** A `MutatingAdmissionPolicy` could inject a default
 request instead of rejecting, but it is GA only from Kubernetes 1.36 (beta and
@@ -229,13 +234,15 @@ These were measured with `default.cpu: 2` in a managed namespace, on Kubernetes
 - **The webhook's birth limit is replaced.** On 1.35, a pod requesting 100m was born
   at 2 instead of 200m. The controller still manages it afterwards.
 - **Some pods with pod-level resources are refused at create:** a pod-level CPU
-  limit below the default, and a pod-level CPU request with no container request.
-- **A container that pins memory and sets no CPU becomes Guaranteed** at request and
-  limit 2, so Headroom does not manage it.
+  limit below the default, and a pod-level CPU request below the default with no
+  container request.
+- **A pod that pins memory and sets no CPU books the default.** A single-container
+  pod like this, unmanaged before, became Guaranteed at a fixed request and limit of
+  2.
 
-It can also let a request-less container pass the policy's request rule, because
-the default request would land before the policy runs. That is reasoned from the
-readings above, not run.
+It also lets a request-less container pass the policy's request rule, and a pod with
+pod-level memory pass its ceiling rule, because the default lands before the policy
+runs. That was admitted on both versions.
 
 ---
 
