@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -80,6 +81,29 @@ var _ = Describe("NodeReconciler and namespace LimitRanges (§8.3)", func() {
 
 	result := func(label string) float64 { return testutil.ToFloat64(resizesTotal.WithLabelValues(label)) }
 
+	createShapedPod := func(node string, containers, sidecars []corev1.Container) *corev1.Pod {
+		for i := range containers {
+			containers[i].Name = fmt.Sprintf("c%d", i)
+		}
+		for i := range sidecars {
+			sidecars[i].Name = fmt.Sprintf("s%d", i)
+			sidecars[i] = sidecarOf(sidecars[i])
+		}
+		pod := &corev1.Pod{Name: "shape", Namespace: ns, Spec: corev1.PodSpec{NodeName: node, Containers: containers, InitContainers: sidecars}}
+		Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+		return pod
+	}
+
+	capOf := func(pod *corev1.Pod) int64 {
+		var list corev1.LimitRangeList
+		Expect(k8sClient.List(ctx, &list, client.InNamespace(ns))).To(Succeed())
+		return eligibility.LimitRangeCapMilli(pod, eligibility.ResizableContainers(pod), list.Items)
+	}
+
+	ratioOf := func(typ corev1.LimitType, ratio string) corev1.LimitRangeItem {
+		return corev1.LimitRangeItem{Type: typ, MaxLimitRequestRatio: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse(ratio)}}
+	}
+
 	It("stops a raise at the container max instead of failing it (the row's measurement)", func() {
 		createLimitRange("max", corev1.LimitRangeItem{Type: corev1.LimitTypeContainer, Max: cpuList(500)})
 		node := nextNode()
@@ -112,20 +136,8 @@ var _ = Describe("NodeReconciler and namespace LimitRanges (§8.3)", func() {
 			createLimitRange("rule", items...)
 			node := nextNode()
 			makeNodeWithMemory(node, 8)
-			for i := range containers {
-				containers[i].Name = fmt.Sprintf("c%d", i)
-			}
-			for i := range sidecars {
-				sidecars[i].Name = fmt.Sprintf("s%d", i)
-				sidecars[i] = sidecarOf(sidecars[i])
-			}
-			pod := &corev1.Pod{Name: "shape", Namespace: ns, Spec: corev1.PodSpec{NodeName: node, Containers: containers, InitContainers: sidecars}}
-			Expect(k8sClient.Create(ctx, pod)).To(Succeed())
-
-			rcs := eligibility.ResizableContainers(pod)
-			var list corev1.LimitRangeList
-			Expect(k8sClient.List(ctx, &list, client.InNamespace(ns))).To(Succeed())
-			Expect(eligibility.LimitRangeCapMilli(pod, rcs, list.Items)).To(Equal(wantCap))
+			pod := createShapedPod(node, containers, sidecars)
+			Expect(capOf(pod)).To(Equal(wantCap))
 
 			Expect(r.applyResize(ctx, pod, wantCap)).To(Succeed(), "the cap itself must be admitted")
 			err := r.applyResize(ctx, pod, wantCap+1)
@@ -144,8 +156,14 @@ var _ = Describe("NodeReconciler and namespace LimitRanges (§8.3)", func() {
 			[]corev1.Container{qosContainer("", 100, 200, 0, 0)},
 			[]corev1.Container{qosContainer("", 100, 200, 0, 0)}, int64(1000)),
 		Entry("container ratio",
-			[]corev1.LimitRangeItem{{Type: corev1.LimitTypeContainer, MaxLimitRequestRatio: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("3")}}},
+			[]corev1.LimitRangeItem{ratioOf(corev1.LimitTypeContainer, "3")},
 			[]corev1.Container{qosContainer("", 100, 200, 0, 0)}, nil, int64(300)),
+		Entry("container ratio whose exact limit the apiserver's rounding refuses",
+			[]corev1.LimitRangeItem{ratioOf(corev1.LimitTypeContainer, "8.05")},
+			[]corev1.Container{qosContainer("", 20, 100, 0, 0)}, nil, int64(160)),
+		Entry("pod ratio whose exact limit the apiserver's rounding refuses",
+			[]corev1.LimitRangeItem{ratioOf(corev1.LimitTypePod, "8.05")},
+			[]corev1.Container{qosContainer("", 20, 100, 0, 0)}, nil, int64(160)),
 		Entry("pod max",
 			[]corev1.LimitRangeItem{{Type: corev1.LimitTypePod, Max: cpuList(700)}},
 			[]corev1.Container{qosContainer("", 100, 200, 0, 0), qosContainer("", 100, 200, 0, 0)}, nil, int64(700)),
@@ -153,7 +171,7 @@ var _ = Describe("NodeReconciler and namespace LimitRanges (§8.3)", func() {
 			[]corev1.LimitRangeItem{{Type: corev1.LimitTypePod, Max: cpuList(700)}},
 			[]corev1.Container{qosContainer("", 100, 200, 0, 0), zeroRequest(qosContainer("", 0, 150, 0, 0))}, nil, int64(550)),
 		Entry("pod ratio",
-			[]corev1.LimitRangeItem{{Type: corev1.LimitTypePod, MaxLimitRequestRatio: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("2.5")}}},
+			[]corev1.LimitRangeItem{ratioOf(corev1.LimitTypePod, "2.5")},
 			[]corev1.Container{qosContainer("", 100, 200, 0, 0), qosContainer("", 100, 200, 0, 0)}, nil, int64(500)),
 		Entry("the tightest rule wins",
 			[]corev1.LimitRangeItem{
@@ -161,6 +179,49 @@ var _ = Describe("NodeReconciler and namespace LimitRanges (§8.3)", func() {
 				{Type: corev1.LimitTypePod, Max: cpuList(400)},
 			},
 			[]corev1.Container{qosContainer("", 100, 200, 0, 0)}, nil, int64(400)),
+	)
+
+	// A fractional ratio×request is not a limit any share can hold, and splitLimit
+	// rounds one share up, so ratio×total itself is refused. The cap is safe rather
+	// than tight here: wantCap+1 can round the other way and be admitted.
+	DescribeTable("keeps a raise inside a fractional ratio",
+		func(ratio string, containers, sidecars []corev1.Container, refused, wantCap, wantLimit int64) {
+			createLimitRange("rule", ratioOf(corev1.LimitTypeContainer, ratio))
+			node := nextNode()
+			makeNodeWithMemory(node, 8)
+			pod := createShapedPod(node, containers, sidecars)
+			Expect(capOf(pod)).To(Equal(wantCap))
+
+			err := r.applyResize(ctx, pod, refused)
+			Expect(apierrors.IsForbidden(err)).To(BeTrue(), "ratio×total must be refused, got: %v", err)
+
+			denied := result(resultLimitRangeDenied)
+			_, err = r.Reconcile(ctx, reconcile.Request{Name: node})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(result(resultLimitRangeDenied)).To(Equal(denied), "the clamp must prevent the refusal")
+
+			var got corev1.Pod
+			Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &got)).To(Succeed())
+			var sum int64
+			for _, c := range slices.Concat(got.Spec.Containers, got.Spec.InitContainers) {
+				sum += c.Resources.Limits.Cpu().MilliValue()
+			}
+			Expect(sum).To(Equal(wantLimit), "the quantum takes the cap down to its grid")
+			Expect(r.applyResize(ctx, &got, wantCap)).To(Succeed(), "the cap itself must be admitted")
+		},
+		Entry("round requests", "1.25",
+			[]corev1.Container{qosContainer("", 250, 260, 0, 0), qosContainer("", 150, 160, 0, 0)}, nil,
+			int64(500), int64(498), int64(490)),
+		Entry("two containers", "1.5",
+			[]corev1.Container{qosContainer("", 105, 110, 0, 0), qosContainer("", 95, 100, 0, 0)}, nil,
+			int64(300), int64(298), int64(290)),
+		Entry("a native sidecar", "1.5",
+			[]corev1.Container{qosContainer("", 95, 100, 0, 0)},
+			[]corev1.Container{qosContainer("", 105, 110, 0, 0)},
+			int64(300), int64(298), int64(290)),
+		Entry("a larger ratio", "2.5",
+			[]corev1.Container{qosContainer("", 101, 150, 0, 0), qosContainer("", 99, 150, 0, 0)}, nil,
+			int64(500), int64(498), int64(490)),
 	)
 
 	It("brings a running pod's limit down to a max below it", func() {

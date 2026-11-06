@@ -251,8 +251,9 @@ Per-pod resize results the controller handles (design §6.4), each with a distin
 
 A rising `quota-denied` count means a managed namespace still has a `limits.cpu`
 quota. Fix the quota (see [Preflight](#preflight)); do not tune around it. A
-sustained `limitrange-denied` count means a LimitRange is tighter than a running
-pod's request: raise the `max`, or recreate the pod with a request inside it.
+sustained `limitrange-denied` count means something Headroom cannot change breaks
+a LimitRange: a running pod's request, or the limit of a request-less or init
+container. The event quotes the rule. Raise the `max`, or recreate the pod inside it.
 
 ---
 

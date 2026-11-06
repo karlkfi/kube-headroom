@@ -254,9 +254,10 @@ func PodBookedCPUMilli(pod *corev1.Pod) int64 {
 // or 0 when none of them bounds CPU. It restates each rule the apiserver checks on
 // a resize as a pod total. The target splits pro-rata by request (splitLimit), so a
 // per-container max binds through the largest request and a per-container ratio
-// through the total, while a per-pod rule also counts the limits of request-less
-// containers, which Headroom leaves alone. The result can sit below the pod's
-// request when a LimitRange postdates the pod; no resize can satisfy that one.
+// through whichever request leaves the least room, while a per-pod rule also counts
+// the limits of request-less containers, which Headroom leaves alone. The result can
+// sit below the pod's request when a LimitRange postdates the pod; no resize can
+// satisfy that one.
 func LimitRangeCapMilli(pod *corev1.Pod, rcs []ResizableContainer, limitRanges []corev1.LimitRange) int64 {
 	var total, largest, untouched float64
 	for _, c := range rcs {
@@ -270,28 +271,28 @@ func LimitRangeCapMilli(pod *corev1.Pod, rcs []ResizableContainer, limitRanges [
 		return 0
 	}
 	podRequests := resourcehelper.PodRequests(pod, resourcehelper.PodResourcesOptions{ExcludeOverhead: true})
-	podRequest := float64(podRequests.Cpu().MilliValue())
+	podRequest := podRequests.Cpu().MilliValue()
 
 	limit := math.Inf(1)
 	for i := range limitRanges {
 		for _, item := range limitRanges[i].Spec.Limits {
 			maxCPU, hasMax := item.Max[corev1.ResourceCPU]
 			ratioCPU, hasRatio := item.MaxLimitRequestRatio[corev1.ResourceCPU]
-			maxMilli, ratio := float64(maxCPU.MilliValue()), float64(ratioCPU.MilliValue())/1000
+			maxMilli, ratioMilli := float64(maxCPU.MilliValue()), ratioCPU.MilliValue()
 			switch item.Type {
 			case corev1.LimitTypeContainer:
 				if hasMax {
 					limit = min(limit, maxMilli*total/largest)
 				}
 				if hasRatio {
-					limit = min(limit, ratio*total)
+					limit = min(limit, containerRatioCapMilli(rcs, ratioMilli, total))
 				}
 			case corev1.LimitTypePod:
 				if hasMax {
 					limit = min(limit, maxMilli-untouched)
 				}
 				if hasRatio {
-					limit = min(limit, ratio*podRequest-untouched)
+					limit = min(limit, float64(ratioLimitMilli(ratioMilli, podRequest))-untouched)
 				}
 			}
 		}
@@ -300,4 +301,29 @@ func LimitRangeCapMilli(pod *corev1.Pod, rcs []ResizableContainer, limitRanges [
 		return 0
 	}
 	return max(int64(limit), 1) // 0 means no cap, and a rule leaving no room is still a cap
+}
+
+// containerRatioCapMilli is the largest pod target that keeps every container's
+// share within its own ratio limit. splitLimit rounds a share up to the next
+// milli-core, so a share at or below a whole limit stays there, where ratio×total
+// can round one past it.
+func containerRatioCapMilli(rcs []ResizableContainer, ratioMilli int64, total float64) float64 {
+	limit := math.Inf(1)
+	for _, c := range rcs {
+		if c.RequestMilli > 0 {
+			limit = min(limit, float64(ratioLimitMilli(ratioMilli, c.RequestMilli))*total/float64(c.RequestMilli))
+		}
+	}
+	return limit
+}
+
+// ratioLimitMilli is the largest limit a maxLimitRequestRatio admits for a request.
+// It repeats LimitRanger's float comparison, which refuses some limits exactly at
+// the ratio: 161m over a 20m request reads as past a ratio of 8.05.
+func ratioLimitMilli(ratioMilli, requestMilli int64) int64 {
+	limit := ratioMilli * requestMilli / 1000
+	if float64(limit)/float64(requestMilli)*1000 > float64(ratioMilli) {
+		limit--
+	}
+	return limit
 }
