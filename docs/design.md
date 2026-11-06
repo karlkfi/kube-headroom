@@ -409,7 +409,7 @@ Spec fields: `policy: Proportional` (enum for future), `minBurstFloor`, `maxMult
 
 ### 9.4 Key implementation constraints (for the coding session)
 
-1. Patch via the **resize subresource** with SSA and fieldManager `headroom`; never touch requests, never touch memory, never touch any field but `spec.containers[*].resources.limits.cpu` of eligible containers.
+1. Patch via the **resize subresource** with SSA and fieldManager `headroom`; never touch requests, never touch memory, never touch any field but `resources.limits.cpu` of eligible containers, under `spec.containers[*]` or, for a native sidecar, `spec.initContainers[*]`.
 2. Set nothing if the container's `resizePolicy` for CPU is `RestartContainer` — treat as ineligible (a limit change must never restart a workload).
 3. Informer cache transform to strip pod fields (keep metadata, nodeName, phase, QoS, container resources, resizePolicy, ownerRefs).
 4. All timing knobs jittered.
