@@ -97,3 +97,30 @@ webhook-server-cert
 {{- fail "webhook.enable=true with certmanager.enable=false requires a bring-your-own cert: set webhook.certSecretName to a pre-created TLS Secret (and webhook.caBundle so the MutatingWebhookConfiguration trusts it). Otherwise set certmanager.enable=true or webhook.enable=false." -}}
 {{- end -}}
 {{- end -}}
+
+{{/*
+Manager env: extraEnv, plus ENABLE_WEBHOOKS=false when the webhook is off. The
+binary reads that variable rather than the chart's values, and without it starts
+a webhook server with no cert and crash-loops. An extraEnv entry of that name is
+left to stand alone, because a repeated name fails helm's server-side apply, and
+rendering fails if it holds any other value, because with the webhook off no
+cert is mounted. A valueFrom entry cannot be read here, so it goes unchecked.
+*/}}
+{{- define "kube-headroom.managerEnv" -}}
+{{- $env := .Values.extraEnv | default list -}}
+{{- $named := false -}}
+{{- range $env -}}
+{{- if eq .name "ENABLE_WEBHOOKS" -}}
+{{- $named = true -}}
+{{- if and (not $.Values.webhook.enable) (hasKey . "value") (ne (toString .value) "false") -}}
+{{- fail "extraEnv sets ENABLE_WEBHOOKS to something other than \"false\" with webhook.enable=false; the manager would start a webhook server with no cert and crash-loop." -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if and (not .Values.webhook.enable) (not $named) -}}
+{{- $env = prepend $env (dict "name" "ENABLE_WEBHOOKS" "value" "false") -}}
+{{- end -}}
+{{- with $env -}}
+{{- toYaml . -}}
+{{- end -}}
+{{- end -}}
