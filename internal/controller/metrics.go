@@ -50,12 +50,12 @@ var (
 		Help:      "Proportional-policy factor F = 1 + slack/managedRequests for the node.",
 	}, []string{nodeLabel})
 
-	// nodeSlackCores is the node's CPU slack in cores (allocatable minus the sum
-	// of all pod requests, floored at 0) — the other raw policy input (§5.4).
+	// nodeSlackCores is the node's CPU slack in cores (allocatable minus what the
+	// scheduler books for all pods, floored at 0) — the other raw policy input (§5.4).
 	nodeSlackCores = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: metricNamespace,
 		Name:      "node_slack_cores",
-		Help:      "Node CPU slack in cores (allocatable minus the sum of all pod requests), floored at 0.",
+		Help:      "Node CPU slack in cores (allocatable minus what the scheduler books for all pods), floored at 0.",
 	}, []string{nodeLabel})
 
 	// nodeManagedPods is the count of Headroom-managed pods on the node (N in the

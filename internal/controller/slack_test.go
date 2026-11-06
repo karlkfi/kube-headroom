@@ -45,6 +45,20 @@ func TestSlackBooksWhatTheSchedulerBooks(t *testing.T) {
 	apps := []corev1.Container{cpuContainer(cApp, 200)}
 	resizing := slackPod("k", corev1.PodSpec{Containers: apps})
 	resizing.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: cApp, AllocatedResources: cpuList(500)}}
+	statusMaps := slackPod("l", corev1.PodSpec{Containers: []corev1.Container{cpuContainer(cApp, 300)}})
+	statusMaps.Status.AllocatedResources = cpuList(400)
+	statusMaps.Status.Resources = &corev1.ResourceRequirements{Requests: cpuList(350)}
+	statusMaps.Status.ContainerStatuses = []corev1.ContainerStatus{{
+		Name: cApp, AllocatedResources: cpuList(2000), Resources: &corev1.ResourceRequirements{Requests: cpuList(2000)},
+	}}
+	infeasible := []corev1.PodCondition{{Type: corev1.PodResizePending, Reason: corev1.PodReasonInfeasible}}
+	infeasibleGrow := slackPod("m", corev1.PodSpec{Containers: []corev1.Container{cpuContainer(cApp, 1000)}})
+	infeasibleGrow.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: cApp, AllocatedResources: cpuList(200)}}
+	infeasibleGrow.Status.Conditions = infeasible
+	infeasiblePodGrow := slackPod("n", corev1.PodSpec{Containers: apps, Resources: &corev1.ResourceRequirements{Requests: cpuList(2000)}})
+	infeasiblePodGrow.Status.AllocatedResources = cpuList(500)
+	infeasiblePodGrow.Status.Resources = &corev1.ResourceRequirements{Requests: cpuList(500)}
+	infeasiblePodGrow.Status.Conditions = infeasible
 	tests := []struct {
 		name string
 		pod  *corev1.Pod
@@ -97,6 +111,14 @@ func TestSlackBooksWhatTheSchedulerBooks(t *testing.T) {
 			1000,
 		},
 		{"a shrink still allocated at the old size books the old size", resizing, 500},
+		{
+			"pod-level request does not displace overhead",
+			slackPod("o", corev1.PodSpec{Containers: apps, Resources: &corev1.ResourceRequirements{Requests: cpuList(1000)}, Overhead: cpuList(250)}),
+			1250,
+		},
+		{"pod status maps win over container statuses", statusMaps, 400},
+		{"an infeasible grow books what is allocated", infeasibleGrow, 200},
+		{"an infeasible pod-level grow books what is allocated", infeasiblePodGrow, 500},
 	}
 
 	for _, tc := range tests {

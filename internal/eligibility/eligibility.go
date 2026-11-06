@@ -237,9 +237,9 @@ func UserCapMilli(pod *corev1.Pod) int64 {
 }
 
 // PodBookedCPUMilli is the CPU the scheduler books against the node for this pod
-// (§5.4 slack basis): the larger of the running containers and the init peak,
-// plus overhead, or the pod-level request where set. Options mirror the
-// scheduler's framework.PodInfo.CalculateResource with its default feature gates.
+// (§5.4 slack basis): overhead plus the pod-level request where set, else plus the
+// larger of the running containers and the init peak, following any resize in
+// flight. Options mirror framework.PodInfo.CalculateResource's default feature gates.
 func PodBookedCPUMilli(pod *corev1.Pod) int64 {
 	reqs := resourcehelper.PodRequests(pod, resourcehelper.PodResourcesOptions{
 		UseStatusResources: true,
