@@ -255,7 +255,7 @@ var _ = Describe("NodeReconciler refusal attribution (§6.4)", func() {
 	// and intercepted 403 are that race, with the wording the plugins use.
 	DescribeTable("names who refused a 403",
 		func(message, wantResult, wantReason, wantRefusedBy string) {
-			forbidden := apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "refused", errors.New(message))
+			forbidden := apierrors.NewForbidden(schema.GroupResource{Resource: resourcePods}, "refused", errors.New(message))
 			r, rec := newResizeErrReconciler("refused", forbidden)
 
 			labels := []string{resultQuotaDenied, resultLimitRangeDenied, resultForbidden}
