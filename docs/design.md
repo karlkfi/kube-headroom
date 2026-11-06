@@ -242,14 +242,14 @@ be relied on there. Kubernetes 1.35 forbids resizing such a pod while the
 turns the gate on and allows a shrink, but refuses any container limit above the
 pod-level limit, and a pod that sets only memory can get a pod-level CPU limit
 filled in from its containers at create. A pod-level CPU limit, set or filled in,
-bounds the pod in its own cgroup. A pod that sets only memory or only requests at
-pod level, with no CPU limit on its containers, has no ceiling at all: Headroom
-gives it no birth limit and never resizes it. The webhook applies the same gate,
-because the controller would never adjust a seed, and one above a pod-level CPU
-limit would fail the pod's create. The cost on 1.37 runs both ways. A pod could
-shrink on a full node and now keeps its limit, and a limit Headroom set before the
-upgrade stays until the pod is recreated, even with slack free. An empty
-`resources: {}` sets nothing and does not count.
+bounds the pod in its own cgroup. Without one, a container with no CPU limit has
+no ceiling at all, because Headroom gives it no birth limit and never resizes it;
+the optional admission policy rejects that shape where it is applied. The webhook
+applies the same gate, because the controller would never adjust a seed, and one
+above a pod-level CPU limit would fail the pod's create. The cost on 1.37 runs
+both ways. A pod could shrink on a full node and now keeps its limit, and a limit
+Headroom set before the upgrade stays until the pod is recreated, even with slack
+free. An empty `resources: {}` sets nothing and does not count.
 
 The request gate is **pod-level, not per-container**. A managed pod may contain a
 container with no CPU request; that container receives no limit (§5.4, it has no

@@ -162,7 +162,8 @@ inside that unbounded cgroup.
 The controller does not reject or rewrite such pods; that is policy, and it
 belongs to the platform. Headroom ships an **opt-in** `ValidatingAdmissionPolicy`
 that rejects, at CREATE, any pod in a managed namespace with an app or sidecar
-(restartable-init) container whose CPU request is missing or zero:
+(restartable-init) container whose CPU request is missing or zero, or a pod with
+pod-level resources and no CPU ceiling:
 
 - [`config/samples/admission-policy/require-cpu-requests.yaml`](https://github.com/karlkfi/kube-headroom/blob/main/config/samples/admission-policy/require-cpu-requests.yaml)
 
@@ -192,6 +193,14 @@ Headroom's own 1.35 floor already satisfies. The Helm charts do not install it.
 The policy also rejects BestEffort pods in managed namespaces, since they have no
 request on any container and Headroom cannot cap them either. Regular
 (run-to-completion) init containers are not checked: Headroom never resizes them.
+
+It also rejects a pod that sets pod-level `spec.resources` unless the pod has a
+CPU ceiling of its own: a pod-level CPU limit, or a CPU limit on every app and
+sidecar container. Headroom never caps these pods (design §6.3), so without the
+policy they can run unbounded. An empty `resources: {}` passes, because Headroom
+still manages that pod. The policy keeps its name, so re-running the
+`kubectl apply -k` above updates an existing install in place, and this rule does
+not apply until you do.
 
 **No mutating variant ships.** A `MutatingAdmissionPolicy` could inject a default
 request instead of rejecting, but it is GA only from Kubernetes 1.36 (beta and
