@@ -180,7 +180,7 @@ Applied in order **after** the base computation and the §5.2 floor — so the c
 always win: the floor can raise a limit, but a subsequent cap clamps it back
 down. In particular a slack-aware floor can never push a limit above
 `request × maxMultiplier` or above `min(nodeAllocatable, userCap)`; the clamps
-below are the last word.
+below are the last word on that floor.
 
 1. `limit_i ≥ request_i` — always (also required to stay Burstable-legal). A pod that `limit_i = request_i` would make Guaranteed (every container's memory limit equals its memory request) instead gets the next quantum above its request, because resize refuses the QoS change (§4.1). This is the one floor that outranks the clamps below.
 2. `limit_i ≤ request_i × maxMultiplier` (default 10×) — bounds how far behavior on an idle node can diverge from behavior on a busy one, so a pod's "empty-node personality" isn't wildly misleading about its "busy-node personality." Tunable; set to `0` to disable (the CRD's `maxMultiplier: "0"` sentinel).
@@ -401,7 +401,7 @@ type Decision struct {
 func ComputeNode(allocatableMilli int64, pods []PodInput, cfg Config) []Decision
 ```
 
-Every policy question in Section 5 becomes a table test against this function; property tests assert the invariants: `request ≤ limit ≤ min(allocatable, caps)`, scale-invariance under pod-splitting, monotonicity (adding a pod never *raises* anyone else's limit), and `S ≤ 0 ⇒ all limits = requests` apart from the QoS floor (§5.3).
+Every policy question in Section 5 becomes a table test against this function; property tests assert the invariants: `request ≤ limit ≤ min(allocatable, caps)` apart from the QoS floor, scale-invariance under pod-splitting, monotonicity (adding a pod never *raises* anyone else's limit), and `S ≤ 0 ⇒ all limits = requests` apart from the QoS floor (§5.3).
 
 ### 9.3 HeadroomConfig CRD (cluster-scoped, singleton)
 

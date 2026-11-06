@@ -160,7 +160,7 @@
     {"@type": "Question", "name": "Why is my limit what it is right now?", "acceptedAnswer": {"@type": "Answer", "text": "The pod spec is the source of truth: kubectl get pod shows the enforced limit, the kube-headroom.dev/status annotation explains the math, and every change emits a CPULimitAdjusted event."}},
     {"@type": "Question", "name": "How do I opt a workload out?", "acceptedAnswer": {"@type": "Answer", "text": "Set the pod-template label kube-headroom.dev/mode: unmanaged. Enrollment itself is per namespace and is normally your platform team's call. Guaranteed and BestEffort pods are never managed."}},
     {"@type": "Question", "name": "Does Headroom cap my sidecars?", "acceptedAnswer": {"@type": "Answer", "text": "Only the ones that request CPU. A container with no CPU request gets no limit and runs unbounded, even inside a managed pod. A Docker-in-Docker sidecar that runs your build is the common case: give it a request sized for the build."}},
-    {"@type": "Question", "name": "Can I cap my own ceiling?", "acceptedAnswer": {"@type": "Answer", "text": "Yes — annotate the pod with kube-headroom.dev/max-cpu: \"4\" and Headroom will never raise that pod's limit above 4 cores."}},
+    {"@type": "Question", "name": "Can I cap my own ceiling?", "acceptedAnswer": {"@type": "Answer", "text": "Yes — annotate the pod with kube-headroom.dev/max-cpu: \"4\" and Headroom will never raise that pod's limit above 4 cores, as long as 4 cores is above its CPU request."}},
     {"@type": "Question", "name": "My limit went up but my app isn't using it. Why?", "acceptedAnswer": {"@type": "Answer", "text": "Many runtimes size thread pools from the CPU count once at startup — JVM ergonomics, Go automaxprocs, BLAS pools — so a live-raised limit doesn't grow them. Set parallelism explicitly or see the CPU footguns catalog for per-runtime workarounds."}},
     {"@type": "Question", "name": "Does Headroom change my requests, memory, scheduling, or bill?", "acceptedAnswer": {"@type": "Answer", "text": "No. Headroom only ever writes limits.cpu, live via in-place resize, with no restarts. Requests, memory, scheduling placement, and anything billed from requests are untouched."}},
     {"@type": "Question", "name": "Do HPA and VPA still work?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. HPA keys off requests and is structurally unaffected (though unthrottled pods reveal true demand, so review thresholds). VPA composes when set to controlledValues: RequestsOnly — VPA owns requests, Headroom owns limits."}},
@@ -233,7 +233,7 @@
 
     <article class="faq-item" id="cap-ceiling">
       <h2><a href="#cap-ceiling">Can I cap my own ceiling?</a></h2>
-      <p>Yes — annotate the pod: <code>kube-headroom.dev/max-cpu: "4"</code>. Headroom will never raise that pod's limit above 4 cores, useful for pinned-parallelism services that shouldn't be tempted with more.</p>
+      <p>Yes — annotate the pod: <code>kube-headroom.dev/max-cpu: "4"</code>. Headroom will never raise that pod's limit above 4 cores, as long as 4 cores is above its CPU request. That suits pinned-parallelism services that shouldn't be tempted with more.</p>
       <p>More: <a href="docs/tenant-guide.html#cap-your-own-ceiling">cap your own ceiling</a></p>
     </article>
 
