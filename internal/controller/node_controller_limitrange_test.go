@@ -163,6 +163,17 @@ var _ = Describe("NodeReconciler and namespace LimitRanges (§8.3)", func() {
 			[]corev1.Container{qosContainer("", 100, 200, 0, 0)}, nil, int64(400)),
 	)
 
+	It("brings a running pod's limit down to a max below it", func() {
+		node := nextNode()
+		makeNode(node, 8)
+		makeBurstablePod(ns, "over-max", node, 100, 1000)
+		createLimitRange("max", corev1.LimitRangeItem{Type: corev1.LimitTypeContainer, Max: cpuList(300)})
+
+		_, err := r.Reconcile(ctx, reconcile.Request{Name: node})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(podLimitMilli(ns, "over-max")).To(Equal(int64(300)))
+	})
+
 	It("bends the §4.1 QoS floor to a cap inside its quantum", func() {
 		node := nextNode()
 		makeNodeWithMemory(node, 8)
