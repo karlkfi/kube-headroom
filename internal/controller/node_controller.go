@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"math/rand/v2"
 	"slices"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"golang.org/x/time/rate"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -255,7 +257,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	if rateLimited {
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
-	return ctrl.Result{}, nil
+	return ctrl.Result{RequeueAfter: r.backoffRequeue(byKey)}, nil
 }
 
 // buildInputs turns the pods on a node into policy inputs. Every non-terminal
@@ -594,6 +596,29 @@ func (r *NodeReconciler) setBackoffKey(key string) {
 	r.backoff.Store(key, r.clock().Add(r.backoffPeriod()))
 }
 
+// backoffRequeue is how long until the first backoff on these pods ends, plus a
+// debounce, or 0 when none is running: nothing else reconciles a quiet node when
+// the window closes (§6.2 step 6). A pod that stopped being eligible mid-window
+// costs one extra reconcile.
+func (r *NodeReconciler) backoffRequeue(pods map[string]*corev1.Pod) time.Duration {
+	now := r.clock()
+	var next time.Time
+	for key := range pods {
+		v, ok := r.backoff.Load(key)
+		if !ok {
+			continue
+		}
+		until := v.(time.Time)
+		if !now.After(until) && (next.IsZero() || until.Before(next)) {
+			next = until
+		}
+	}
+	if next.IsZero() {
+		return 0
+	}
+	return next.Sub(now) + r.enqueueDelay()
+}
+
 // --- small accessors with defaults ------------------------------------------
 
 func (r *NodeReconciler) fieldManager() string {
@@ -706,8 +731,9 @@ func countDeferred(inputs []policy.PodInput, byKey map[string]*corev1.Pod) int {
 	return n
 }
 
-// SetupWithManager registers the node field index and the pod/node watches that
-// feed node keys into the reconciler, debounced per §6.2.
+// SetupWithManager registers the node field index and the watches that feed node
+// keys into the reconciler, debounced per §6.2: pods and nodes, plus the settings
+// a reconcile reads, which fan out to the nodes they can affect.
 func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if err := mgr.GetFieldIndexer().IndexField(context.Background(), &corev1.Pod{}, podNodeNameIndex,
 		func(o client.Object) []string {
@@ -725,8 +751,68 @@ func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&corev1.Pod{}, r.podEventHandler(),
 			builder.WithPredicates(predicate.Funcs{UpdateFunc: podUpdateRelevant})).
 		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(nodeToRequests),
-			builder.WithPredicates(predicate.Funcs{UpdateFunc: nodeAllocatableChanged})).
+			builder.WithPredicates(predicate.Funcs{UpdateFunc: nodeUpdateRelevant})).
+		// Generation-filtered, or every status write would reconcile every node.
+		Watches(&kubeheadroomv1alpha1.HeadroomConfig{}, r.nodesEventHandler(r.allNodes),
+			builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&corev1.Namespace{}, r.nodesEventHandler(func(ctx context.Context, o client.Object) []string {
+			return r.nodesHoldingPodsIn(ctx, o.GetName())
+		}), builder.WithPredicates(predicate.LabelChangedPredicate{})).
+		// A LimitRange has no generation; this drops only the informer's resyncs.
+		Watches(&corev1.LimitRange{}, r.nodesEventHandler(func(ctx context.Context, o client.Object) []string {
+			return r.nodesHoldingPodsIn(ctx, o.GetNamespace())
+		}), builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
 		Complete(r)
+}
+
+// nodesEventHandler enqueues the nodes a settings object affects, each with its
+// own jittered debounce so a change reaching many nodes does not reconcile them in
+// step (§7).
+func (r *NodeReconciler) nodesEventHandler(nodes func(context.Context, client.Object) []string) handler.EventHandler {
+	enqueue := func(ctx context.Context, o client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+		for _, name := range nodes(ctx, o) {
+			q.AddAfter(reconcile.Request{Name: name}, r.enqueueDelay())
+		}
+	}
+	return handler.Funcs{
+		CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(ctx, e.Object, q)
+		},
+		UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(ctx, e.ObjectNew, q)
+		},
+		DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(ctx, e.Object, q)
+		},
+	}
+}
+
+func (r *NodeReconciler) allNodes(ctx context.Context, _ client.Object) []string {
+	var nodes corev1.NodeList
+	if err := r.List(ctx, &nodes); err != nil {
+		logf.FromContext(ctx).Error(err, "list nodes for a config change")
+		return nil
+	}
+	names := make([]string, 0, len(nodes.Items))
+	for i := range nodes.Items {
+		names = append(names, nodes.Items[i].Name)
+	}
+	return names
+}
+
+func (r *NodeReconciler) nodesHoldingPodsIn(ctx context.Context, namespace string) []string {
+	var pods corev1.PodList
+	if err := r.List(ctx, &pods, client.InNamespace(namespace)); err != nil {
+		logf.FromContext(ctx).Error(err, "list pods for a namespace change", "namespace", namespace)
+		return nil
+	}
+	names := map[string]struct{}{}
+	for i := range pods.Items {
+		if name := pods.Items[i].Spec.NodeName; name != "" {
+			names[name] = struct{}{}
+		}
+	}
+	return slices.Collect(maps.Keys(names))
 }
 
 // podEventHandler enqueues the node a pod is (or was) bound to, delayed by the
@@ -757,8 +843,10 @@ func (r *NodeReconciler) podEventHandler() handler.EventHandler {
 
 // podUpdateRelevant filters pod updates down to the ones that can change a
 // node's slack or a managed limit (§6.2 step 1): binding, terminal transition,
-// a CPU-request change (e.g. VPA resizing an unmanaged pod), or the kubelet
-// starting or ending a Deferred resize (§6.4).
+// a CPU-request change (e.g. VPA resizing an unmanaged pod), the kubelet starting
+// or ending a Deferred or Infeasible resize (§6.4), or a pod setting a reconcile
+// reads. It compares those settings alone so that the status annotation, which
+// Reconcile writes, can never bring the node back.
 func podUpdateRelevant(e event.UpdateEvent) bool {
 	oldPod, ok1 := e.ObjectOld.(*corev1.Pod)
 	newPod, ok2 := e.ObjectNew.(*corev1.Pod)
@@ -778,6 +866,14 @@ func podUpdateRelevant(e event.UpdateEvent) bool {
 	if podResizeDeferred(oldPod) != podResizeDeferred(newPod) {
 		return true // the deferred-resize gauge is set only in Reconcile
 	}
+	if podResizeInfeasible(oldPod) != podResizeInfeasible(newPod) {
+		return true // the warning event and backoff are armed only in Reconcile
+	}
+	if eligibility.OptedOut(oldPod) != eligibility.OptedOut(newPod) ||
+		eligibility.UserCapMilli(oldPod) != eligibility.UserCapMilli(newPod) ||
+		!apiequality.Semantic.DeepEqual(oldPod.OwnerReferences, newPod.OwnerReferences) {
+		return true
+	}
 	return eligibility.PodCPURequestMilli(eligibility.ResizableContainers(oldPod)) != eligibility.PodCPURequestMilli(eligibility.ResizableContainers(newPod))
 }
 
@@ -785,13 +881,15 @@ func nodeToRequests(_ context.Context, o client.Object) []reconcile.Request {
 	return []reconcile.Request{{Name: o.GetName()}}
 }
 
-// nodeAllocatableChanged passes only node updates that move allocatable CPU;
-// heartbeat/status churn (which fires constantly) is dropped (§6.2 step 2).
-func nodeAllocatableChanged(e event.UpdateEvent) bool {
+// nodeUpdateRelevant passes only node updates that move allocatable CPU or the
+// labels excludedNodeSelector reads; heartbeat/status churn (which fires
+// constantly) is dropped (§6.2 step 2).
+func nodeUpdateRelevant(e event.UpdateEvent) bool {
 	oldNode, ok1 := e.ObjectOld.(*corev1.Node)
 	newNode, ok2 := e.ObjectNew.(*corev1.Node)
 	if !ok1 || !ok2 {
 		return false
 	}
-	return oldNode.Status.Allocatable.Cpu().MilliValue() != newNode.Status.Allocatable.Cpu().MilliValue()
+	return oldNode.Status.Allocatable.Cpu().MilliValue() != newNode.Status.Allocatable.Cpu().MilliValue() ||
+		!maps.Equal(oldNode.Labels, newNode.Labels)
 }

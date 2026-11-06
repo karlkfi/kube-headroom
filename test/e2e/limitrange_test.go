@@ -92,12 +92,6 @@ func limitRangeSpecs() {
 			applyManifest(limitRangeManifest(refusedNamespace, "late", 50))
 			awaitAdmissionRefusal(refusedNamespace, "maximum cpu usage per Container is 50m")
 
-			// The controller recomputes on a pod event, not on a LimitRange change.
-			applyLimitedPod("nudge", neighborNamespace, workerNode, 10, 20)
-			DeferCleanup(func() {
-				_, _ = kubectl("delete", "pod", "nudge", "-n", neighborNamespace, "--ignore-not-found")
-			})
-
 			Eventually(func() string {
 				return eventNotes(refusedNamespace, "ResizeLimitRangeDenied")
 			}).WithTimeout(90 * time.Second).WithPolling(time.Second).Should(And(

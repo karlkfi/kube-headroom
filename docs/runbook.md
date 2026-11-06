@@ -56,7 +56,7 @@ properties; the ResourceQuota one is the sharp edge.
   reaches it. A fractional per-container ratio stops a little short of ratio ×
   total, and well short when a container has a very small request: 1000m + 10m
   at 1.05 gets no burst. A whole-number ratio has no such gap. A new or changed
-  LimitRange applies when the node next reconciles.
+  LimitRange applies within seconds, or when the backoff ends for a pod it refused.
   A `max` below a running pod's request leaves no limit the apiserver will admit,
   which surfaces as [`limitrange-denied`](#resize-outcomes). The script warns on a
   CPU `max`, a `maxLimitRequestRatio` and a `default`. A `max` with no `default`
@@ -124,7 +124,7 @@ namespace at a time.
 
    ```sh
    kubectl label ns team-a kube-headroom.dev/mode=managed
-   # give the reconciler a scheduling event or two, then inspect a pod:
+   # the namespace's pods recompute within seconds; then inspect one:
    kubectl get pod -n team-a <pod> \
      -o jsonpath='{.metadata.annotations.kube-headroom\.dev/status}' | jq
    ```
@@ -143,7 +143,9 @@ namespace at a time.
    ```
 
    Now watch `CPULimitAdjusted` events and `headroom_resizes_total{result="applied"}`.
-   A managed pod alone on a node should climb toward allocatable; scheduling a
+   Every node starts recomputing within seconds and patches at its
+   `perNodePatchesPerSecond` rate, so a node with more pods than that takes longer
+   to finish. A managed pod alone on a node should climb toward allocatable; scheduling a
    neighbor should shrink it within a few seconds.
 
 4. **Add namespaces incrementally.** Repeat step 2 per namespace. There is no
@@ -307,6 +309,10 @@ Per-pod resize results the controller handles (design §6.4), each with a distin
 | `quota-denied` | `403 Forbidden` from a namespace `limits.cpu` ResourceQuota | back off like `infeasible`, `ResizeForbidden` event; **the real fix is the preflight** — quota on `requests.cpu` only |
 | `limitrange-denied` | `403 Forbidden` from a LimitRange the clamp could not satisfy, such as a `max` below the pod's request or one the controller had not yet read | back off like `infeasible`, `ResizeLimitRangeDenied` event quoting the rule |
 | `forbidden` | any other `403 Forbidden`, such as RBAC or an admission webhook | back off like `infeasible`, `ResizeForbidden` event quoting the apiserver |
+
+When a pod's `backoffPeriod` (60s) ends, its node reconciles and retries it without
+waiting for a pod event. A refusal nothing has fixed therefore adds about one to
+its count per minute, per pod, and one warning event.
 
 A rising `quota-denied` count means a managed namespace still has a `limits.cpu`
 quota. Fix the quota (see [Preflight](#preflight)); do not tune around it. A

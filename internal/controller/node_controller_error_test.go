@@ -151,10 +151,10 @@ var _ = Describe("NodeReconciler resize-error outcomes (§6.4)", func() {
 		before := testutil.ToFloat64(resizesTotal.WithLabelValues(resultQuotaDenied))
 		res, err := runReconcile(r)
 
-		// A refused resize is handled, not fatal: no error, no requeue (the backoff
-		// window, not a requeue, drives the retry).
+		// A refused resize is handled, not fatal: no error, and the only requeue is
+		// for when the backoff window ends.
 		Expect(err).NotTo(HaveOccurred())
-		Expect(res.IsZero()).To(BeTrue())
+		Expect(res.RequeueAfter).To(BeNumerically(">", defaultBackoffPeriod))
 
 		Expect(testutil.ToFloat64(resizesTotal.WithLabelValues(resultQuotaDenied))).
 			To(Equal(before + 1))
