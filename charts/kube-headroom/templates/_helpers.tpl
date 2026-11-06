@@ -102,14 +102,19 @@ webhook-server-cert
 Manager env: extraEnv, plus ENABLE_WEBHOOKS=false when the webhook is off. The
 binary reads that variable rather than the chart's values, and without it starts
 a webhook server with no cert and crash-loops. An extraEnv entry of that name is
-left to stand alone, because a repeated name fails helm's server-side apply.
+left to stand alone, because a repeated name fails helm's server-side apply, and
+rendering fails if it holds any other value, because with the webhook off no
+cert is mounted. A valueFrom entry cannot be read here, so it goes unchecked.
 */}}
 {{- define "kube-headroom.managerEnv" -}}
-{{- $env := .Values.extraEnv -}}
+{{- $env := .Values.extraEnv | default list -}}
 {{- $named := false -}}
 {{- range $env -}}
 {{- if eq .name "ENABLE_WEBHOOKS" -}}
 {{- $named = true -}}
+{{- if and (not $.Values.webhook.enable) (hasKey . "value") (ne (toString .value) "false") -}}
+{{- fail "extraEnv sets ENABLE_WEBHOOKS to something other than \"false\" with webhook.enable=false; the manager would start a webhook server with no cert and crash-loop." -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- if and (not .Values.webhook.enable) (not $named) -}}

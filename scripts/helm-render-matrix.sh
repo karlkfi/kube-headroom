@@ -103,6 +103,26 @@ webhook_switch "webhook off + extraEnv" off --set webhook.enable=false \
   --set 'extraEnv[0].name=FOO' --set 'extraEnv[0].value=bar'
 webhook_switch "webhook off + ENABLE_WEBHOOKS already in extraEnv" off --set webhook.enable=false \
   --set 'extraEnv[0].name=ENABLE_WEBHOOKS' --set-string 'extraEnv[0].value=false'
+webhook_switch "webhook off + blank extraEnv" off --set webhook.enable=false --set extraEnv=null
+
+# Other extraEnv entries stay beside the switch.
+printf '  webhook switch keeps extraEnv: webhook off + extraEnv\n'
+if ! grep -q 'name: FOO' <<<"$("$HELM" template "$OPERATOR_RELEASE" "$OPERATOR_CHART" -n "$HELM_NAMESPACE" \
+    --set webhook.enable=false --set 'extraEnv[0].name=FOO' --set 'extraEnv[0].value=bar')"; then
+  echo "  FAILED: webhook off + extraEnv dropped the extraEnv entry" >&2
+  FAIL=1
+fi
+
+# Negative case: with the webhook off, an extraEnv value that turns it back on
+# must FAIL to render rather than ship a Deployment that crash-loops.
+for value in true False 0 ""; do
+  printf '  render (expect failure): webhook off + ENABLE_WEBHOOKS=%s\n' "$value"
+  if "$HELM" template "$OPERATOR_RELEASE" "$OPERATOR_CHART" -n "$HELM_NAMESPACE" --set webhook.enable=false \
+      --set 'extraEnv[0].name=ENABLE_WEBHOOKS' --set-string "extraEnv[0].value=$value" >/dev/null 2>&1; then
+    echo "  FAILED: expected a render error for webhook off + ENABLE_WEBHOOKS=$value, but rendering succeeded" >&2
+    FAIL=1
+  fi
+done
 
 if [ "$FAIL" -ne 0 ]; then
   echo "helm render matrix: one or more cases failed" >&2
