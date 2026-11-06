@@ -39,10 +39,18 @@ properties; the ResourceQuota one is the sharp edge.
 
   Any hit must drop its `limits.cpu` hard limit (keep `requests.cpu`) before
   enrollment, or the namespace will see resize 403s.
-- **LimitRange `max` caps what Headroom can set.** A namespace `max.limits.cpu`
-  (or a per-container `max`) clamps the achievable ceiling. This is safe (raises
-  just stop at the cap) but means the "empty-node personality" is bounded;
-  document it for tenants who wonder why their limit plateaus.
+- **LimitRange `max` caps what Headroom can set.** A CPU `max` or
+  `maxLimitRequestRatio`, per container or per pod, clamps the achievable ceiling.
+  This is safe (raises just stop at the cap) but means the "empty-node
+  personality" is bounded; document it for tenants who wonder why their limit
+  plateaus. A pod's limit is split across its containers by request, so a
+  per-container `max` stops the pod when the container with the largest request
+  reaches it. A fractional per-container ratio stops a little short of ratio ×
+  total, and well short when a container has a very small request: 1000m + 10m
+  at 1.05 gets no burst. A whole-number ratio has no such gap. A new or changed
+  LimitRange applies when the node next reconciles.
+  A `max` below a running pod's request leaves no limit the apiserver will admit,
+  which surfaces as [`limitrange-denied`](#resize-outcomes).
 - **VPA, if present, must be `controlledValues: RequestsOnly`** on managed pods.
   Default-mode VPA (`RequestsAndLimits`) scales limits and conflicts directly —
   exclude those pods. See the [tenant guide](tenant-guide.md#vpa) for the
@@ -240,10 +248,18 @@ Per-pod resize results the controller handles (design §6.4), each with a distin
 | `dry-run` | target computed, not applied (`dryRun: true`) | annotation + metric only |
 | `Deferred` | kubelet will retry (transient) | none; `headroom_node_resizes_deferred{node}` counts the managed pods holding one, and a *sustained* nonzero count is an alerting signal |
 | `infeasible` | kubelet cannot satisfy it (should be near-impossible — targets are capped at allocatable) | mark pod ineligible for `backoffPeriod`, warning event |
-| `quota-denied` | `403 Forbidden` from a namespace `limits.cpu` ResourceQuota | back off like `infeasible`; **the real fix is the preflight** — quota on `requests.cpu` only |
+| `quota-denied` | `403 Forbidden` from a namespace `limits.cpu` ResourceQuota | back off like `infeasible`, `ResizeForbidden` event; **the real fix is the preflight** — quota on `requests.cpu` only |
+| `limitrange-denied` | `403 Forbidden` from a LimitRange the clamp could not satisfy, such as a `max` below the pod's request or one the controller had not yet read | back off like `infeasible`, `ResizeLimitRangeDenied` event quoting the rule |
+| `forbidden` | any other `403 Forbidden`, such as RBAC or an admission webhook | back off like `infeasible`, `ResizeForbidden` event quoting the apiserver |
 
 A rising `quota-denied` count means a managed namespace still has a `limits.cpu`
-quota. Fix the quota (see [Preflight](#preflight)); do not tune around it.
+quota. Fix the quota (see [Preflight](#preflight)); do not tune around it. A
+sustained `limitrange-denied` count means something Headroom cannot change breaks
+a LimitRange: a running pod's request, or the limit of a request-less or init
+container. The event quotes the rule. Raise the `max`, or recreate the pod inside it.
+The exception is a memory-pinned pod whose limit predates a fractional ratio and
+which has a very small request, such as 100m + 10m at 1.05: Headroom's cap leaves it
+no room above its request, so use a whole-number ratio.
 
 ---
 
@@ -255,7 +271,7 @@ Prometheus series (design §8.1):
 - `headroom_node_slack_cores{node}` — unbooked CPU on the node.
 - `headroom_pod_limit_cores{namespace,pod}` — the computed/applied ceiling.
 - `headroom_resizes_total{result}` — `applied` / `dry-run` / `infeasible` /
-  `quota-denied` / `conflict` / `error`.
+  `quota-denied` / `limitrange-denied` / `forbidden` / `conflict` / `error`.
 - `headroom_node_resizes_deferred{node}` — managed pods whose kubelet reports the
   resize as `Deferred` (`PodResizePending` condition).
 - `headroom_reconcile_duration_seconds`, `headroom_pods_managed`.
@@ -366,10 +382,11 @@ are safe.
   so a restart, rollout, or leader change starts with it empty. A pod still
   showing an `Infeasible` resize re-enters backoff from its own status on its
   first reconcile — no retry patch is issued, though its one-time `Infeasible`
-  warning event and `result="infeasible"` increment reappear. The `quota-denied`
-  case is *not* re-derivable from pod status, so a quota-blocked pod re-issues its
+  warning event and `result="infeasible"` increment reappear. The `403` cases are
+  *not* re-derivable from pod status, so a quota-blocked pod re-issues its
   resize once (one `403`, one `quota-denied` increment, one `ResizeForbidden`
-  event) before backing off again. A brief `quota-denied` blip right after a
+  event) before backing off again, and `limitrange-denied` and `forbidden` do the
+  same with their own labels. A brief `quota-denied` blip right after a
   manager restart is therefore expected; a *sustained* count still means a
   namespace violates the `requests.cpu`-only preflight (fix the quota, above).
 

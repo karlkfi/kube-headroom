@@ -28,9 +28,12 @@ import (
 // controller-runtime fake client and made to fail, so the refusal table — 403 →
 // quota-denied, Conflict → requeue, generic → bubble — is exercised directly. Quota
 // 403 is a Phase-0-validated failure path (spike Q2c) and a §8.6 alerting signal, so
-// it must not stay untested.
+// it must not stay untested. node_controller_limitrange_test.go covers who a 403 names.
 
-const errNodeName = "err-node"
+const (
+	errNodeName  = "err-node"
+	resourcePods = "pods"
+)
 
 // resizeErrConfig builds a non-dry-run singleton with the knobs the policy needs
 // spelled out explicitly. The fake client applies no CRD defaults (there is no
@@ -141,7 +144,7 @@ var _ = Describe("NodeReconciler resize-error outcomes (§6.4)", func() {
 	}
 
 	It("meters quota-denied, warns, and backs off on a 403 Forbidden (spike Q2c)", func() {
-		forbidden := apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "quotapod",
+		forbidden := apierrors.NewForbidden(schema.GroupResource{Resource: resourcePods}, "quotapod",
 			errors.New("exceeded quota: cpu-limits, requested: limits.cpu=8"))
 		r, rec := newResizeErrReconciler("quotapod", forbidden)
 
@@ -160,7 +163,7 @@ var _ = Describe("NodeReconciler resize-error outcomes (§6.4)", func() {
 	})
 
 	It("meters conflict and requeues the node on a Conflict (stale generation)", func() {
-		conflict := apierrors.NewConflict(schema.GroupResource{Resource: "pods"}, "conflictpod",
+		conflict := apierrors.NewConflict(schema.GroupResource{Resource: resourcePods}, "conflictpod",
 			errors.New("the object has been modified"))
 		r, rec := newResizeErrReconciler("conflictpod", conflict)
 

@@ -32,12 +32,14 @@ const (
 
 // resize result label values on resizesTotal, one per §6.4 outcome.
 const (
-	resultApplied     = "applied"      // resize patch accepted (event: CPULimitAdjusted)
-	resultDryRun      = "dry-run"      // would apply; no patch issued (dry-run mode, §9.3)
-	resultInfeasible  = "infeasible"   // kubelet marked the resize Infeasible (event: ResizeInfeasible)
-	resultQuotaDenied = "quota-denied" // limits.cpu ResourceQuota 403 (event: ResizeForbidden)
-	resultConflict    = "conflict"     // stale generation; recompute next reconcile
-	resultError       = "error"        // unexpected patch error
+	resultApplied          = "applied"           // resize patch accepted (event: CPULimitAdjusted)
+	resultDryRun           = "dry-run"           // would apply; no patch issued (dry-run mode, §9.3)
+	resultInfeasible       = "infeasible"        // kubelet marked the resize Infeasible (event: ResizeInfeasible)
+	resultQuotaDenied      = "quota-denied"      // ResourceQuota 403 (event: ResizeForbidden)
+	resultLimitRangeDenied = "limitrange-denied" // LimitRange 403 the clamp could not prevent (event: ResizeLimitRangeDenied)
+	resultForbidden        = "forbidden"         // any other 403, e.g. RBAC or an admission webhook (event: ResizeForbidden)
+	resultConflict         = "conflict"          // stale generation; recompute next reconcile
+	resultError            = "error"             // unexpected patch error
 )
 
 var (
@@ -81,7 +83,7 @@ var (
 	resizesTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Namespace: metricNamespace,
 		Name:      "resizes_total",
-		Help:      "CPU-limit resize decisions by outcome (applied, dry-run, infeasible, quota-denied, conflict, error).",
+		Help:      "CPU-limit resize decisions by outcome (applied, dry-run, infeasible, quota-denied, limitrange-denied, forbidden, conflict, error).",
 	}, []string{"result"})
 
 	// reconcileDuration is the wall-clock latency of a single node reconcile.
@@ -120,7 +122,7 @@ func init() {
 	metrics.Registry.MustRegister(nodeFactor, nodeSlackCores, nodeManagedPods, nodeResizesDeferred, resizesTotal, reconcileDuration, podLimitCores, podsManaged)
 	// Pre-create the counter series so each exports 0 from process start, making
 	// rate()-based alerts well-defined before the first resize ever happens.
-	for _, r := range []string{resultApplied, resultDryRun, resultInfeasible, resultQuotaDenied, resultConflict, resultError} {
+	for _, r := range []string{resultApplied, resultDryRun, resultInfeasible, resultQuotaDenied, resultLimitRangeDenied, resultForbidden, resultConflict, resultError} {
 		resizesTotal.WithLabelValues(r)
 	}
 }

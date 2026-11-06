@@ -6,6 +6,7 @@
 package eligibility
 
 import (
+	"math"
 	"slices"
 	"strings"
 
@@ -124,7 +125,8 @@ func OptedOut(pod *corev1.Pod) bool {
 // CPU request, and no container that would restart on resize (§9.4.2). The
 // remaining §6.3 gates need cluster context and live in the reconciler:
 // namespace opt-in (NamespaceManaged), owner exclusion (OwnerExcluded), and node
-// exclusion (NodeManageable). LimitRange awareness is deferred to Phase 2.
+// exclusion (NodeManageable). A LimitRange caps a pod rather than excluding it
+// (LimitRangeCapMilli).
 //
 // This gate keys off pod.Status.QOSClass, which the apiserver populates after
 // admission — so it is the controller's post-bind gate. The webhook, which runs
@@ -246,4 +248,86 @@ func PodBookedCPUMilli(pod *corev1.Pod) int64 {
 		InPlacePodLevelResourcesVerticalScalingEnabled: true,
 	})
 	return reqs.Cpu().MilliValue()
+}
+
+// LimitRangeCapMilli is the pod target a raise stops at under the given LimitRanges
+// (§8.3), or 0 when none of them bounds CPU. It restates each rule the apiserver checks on
+// a resize as a pod total. The target splits pro-rata by request (splitLimit), so a
+// per-container max binds through the largest request and a per-container ratio
+// through whichever request leaves the least room, while a per-pod rule also counts
+// the limits of request-less containers, which Headroom leaves alone. The result can
+// sit below the pod's request when a LimitRange postdates the pod; no resize can
+// satisfy that one.
+func LimitRangeCapMilli(pod *corev1.Pod, rcs []ResizableContainer, limitRanges []corev1.LimitRange) int64 {
+	var total, largest, untouched float64
+	for _, c := range rcs {
+		total += float64(c.RequestMilli)
+		largest = max(largest, float64(c.RequestMilli))
+		if c.RequestMilli <= 0 {
+			untouched += float64(c.LimitMilli)
+		}
+	}
+	if total <= 0 || len(limitRanges) == 0 {
+		return 0
+	}
+	podRequests := resourcehelper.PodRequests(pod, resourcehelper.PodResourcesOptions{ExcludeOverhead: true})
+	podRequest := podRequests.Cpu().MilliValue()
+
+	limit := math.Inf(1)
+	for i := range limitRanges {
+		for _, item := range limitRanges[i].Spec.Limits {
+			maxCPU, hasMax := item.Max[corev1.ResourceCPU]
+			ratioCPU, hasRatio := item.MaxLimitRequestRatio[corev1.ResourceCPU]
+			maxMilli, ratioMilli := float64(maxCPU.MilliValue()), ratioCPU.MilliValue()
+			switch item.Type {
+			case corev1.LimitTypeContainer:
+				if hasMax {
+					limit = min(limit, maxMilli*total/largest)
+				}
+				if hasRatio {
+					limit = min(limit, containerRatioCapMilli(rcs, ratioMilli, total))
+				}
+			case corev1.LimitTypePod:
+				if hasMax {
+					limit = min(limit, maxMilli-untouched)
+				}
+				if hasRatio {
+					limit = min(limit, float64(ratioLimitMilli(ratioMilli, podRequest))-untouched)
+				}
+			}
+		}
+	}
+	if limit >= math.MaxInt64 {
+		return 0
+	}
+	return max(int64(limit), 1) // 0 means no cap, and a rule leaving no room is still a cap
+}
+
+// containerRatioCapMilli is a pod target that keeps every container's share within
+// its own ratio limit however the remainders fall. splitLimit rounds a share up to
+// the next milli-core, so a share at or below a whole limit stays there, where
+// ratio×total can round one past it. A very small request can hold this near the
+// pod's total request even though a higher target would happen to split safely.
+func containerRatioCapMilli(rcs []ResizableContainer, ratioMilli int64, total float64) float64 {
+	limit := math.Inf(1)
+	for _, c := range rcs {
+		if c.RequestMilli > 0 {
+			limit = min(limit, float64(ratioLimitMilli(ratioMilli, c.RequestMilli))*total/float64(c.RequestMilli))
+		}
+	}
+	return limit
+}
+
+// ratioLimitMilli is the largest limit a maxLimitRequestRatio admits for a request.
+// It repeats LimitRanger's float comparison, which refuses some limits exactly at
+// the ratio: 161m over a 20m request reads as past a ratio of 8.05.
+func ratioLimitMilli(ratioMilli, requestMilli int64) int64 {
+	if float64(ratioMilli)*float64(requestMilli) >= math.MaxInt64 {
+		return math.MaxInt64 // past int64, and no limit comes near it
+	}
+	limit := ratioMilli * requestMilli / 1000
+	if float64(limit)/float64(requestMilli)*1000 > float64(ratioMilli) {
+		limit--
+	}
+	return limit
 }

@@ -131,6 +131,40 @@ func TestAboveRequest_StaysAboveRequest(t *testing.T) {
 	}
 }
 
+// §8.3: a LimitRange cap holds like any other, and the QoS floor bends to it where
+// a limit satisfying both exists. Where none does, the floor stands and the
+// apiserver's refusal names the LimitRange, where limit == request would only name QoS.
+func TestLimitRangeCap(t *testing.T) {
+	pod := func(req, lrCap, userCap int64, aboveRequest bool) PodInput {
+		return PodInput{Key: "P", RequestMilli: req, CurrentLimitMilli: 200, Managed: true, LimitRangeCap: lrCap, UserCapMilli: userCap, AboveRequest: aboveRequest}
+	}
+	tests := []struct {
+		name  string
+		alloc int64
+		pod   PodInput
+		want  int64
+	}{
+		{"caps a raise", 8000, pod(100, 500, 0, false), 500},
+		{"steps down to the quantum grid", 8000, pod(100, 505, 0, false), 500},
+		{"tighter user cap wins", 8000, pod(100, 500, 300, false), 300},
+		{"tighter LimitRange wins over a user cap", 8000, pod(100, 300, 500, false), 300},
+		{"cap below request holds the request", 8000, pod(100, 50, 0, false), 100},
+		{"floor stops at a cap inside its quantum", 100, pod(100, 105, 0, true), 105},
+		{"floor clear of the cap stays on the grid", 100, pod(100, 500, 0, true), 110},
+		{"floor stands when the cap equals request", 100, pod(100, 100, 0, true), 110},
+		{"floor stands when the cap is below request", 100, pod(100, 50, 0, true), 110},
+		{"user cap inside the quantum does not move the floor", 100, pod(100, 0, 105, true), 110},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, ds := Compute(tt.alloc, []PodInput{tt.pod}, DefaultConfig())
+			if got := ds[0].TargetLimitMilli; got != tt.want {
+				t.Errorf("target = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
 // §5.4: unmanaged pods consume slack but receive no decision and no burst.
 func TestUnmanaged_ConsumeSlackButNoDecision(t *testing.T) {
 	cfg := DefaultConfig()

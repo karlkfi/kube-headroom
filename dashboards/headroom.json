@@ -155,7 +155,7 @@
     },
     {
       "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
-      "description": "Refused resizes per second (infeasible + quota-denied + error). Sustained non-zero is an alerting signal (§6.4).",
+      "description": "Refused resizes per second (infeasible + quota-denied + limitrange-denied + forbidden + error). Sustained non-zero is an alerting signal (§6.4).",
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "thresholds" },
@@ -186,7 +186,7 @@
         {
           "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
           "editorMode": "code",
-          "expr": "sum(rate(headroom_resizes_total{result=~\"infeasible|quota-denied|error\"}[5m]))",
+          "expr": "sum(rate(headroom_resizes_total{result=~\"infeasible|quota-denied|limitrange-denied|forbidden|error\"}[5m]))",
           "legendFormat": "refused/s",
           "range": true,
           "refId": "A"

@@ -326,7 +326,9 @@ var _ = Describe("Manager", Ordered, func() {
 	// Describe so they reuse the already-deployed controller-manager. The specs
 	// and their helpers live in headroom_test.go. The admission-policy specs run
 	// first and remove their policy afterwards, so it never gates headroomSpecs.
+	// headroomSpecs runs last because its last spec takes the controller down.
 	admissionPolicySpecs()
+	limitRangeSpecs()
 	headroomSpecs()
 })
 

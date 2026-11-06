@@ -22,13 +22,18 @@ const policyName = "proportional-v1"
 // labels for the same fact (kubernetes-conventions.md: one vocabulary across
 // event, annotation, and metric). Never rewrite one casually — it is contract.
 const (
-	reasonCPULimitAdjusted = "CPULimitAdjusted" // a managed pod's CPU limit changed (result=applied/dry-run)
-	reasonResizeInfeasible = "ResizeInfeasible" // kubelet refused the resize (result=infeasible)
-	reasonResizeForbidden  = "ResizeForbidden"  // limits.cpu quota 403 (result=quota-denied)
+	reasonCPULimitAdjusted = "CPULimitAdjusted"       // a managed pod's CPU limit changed (result=applied/dry-run)
+	reasonResizeInfeasible = "ResizeInfeasible"       // kubelet refused the resize (result=infeasible)
+	reasonResizeForbidden  = "ResizeForbidden"        // quota or other 403 (result=quota-denied/forbidden)
+	reasonResizeLimitRange = "ResizeLimitRangeDenied" // LimitRange 403 (result=limitrange-denied)
 
 	// actionResize is the events/v1 "action" (the machine-readable operation) for
 	// every Headroom event: they all concern the in-place CPU-limit resize.
 	actionResize = "Resizing"
+
+	// eventNoteLimit is the longest note events/v1 accepts. A refusal's note quotes
+	// the apiserver, and an admission webhook can say anything at any length.
+	eventNoteLimit = 1024
 )
 
 // podStatus is the JSON payload of the kube-headroom.dev/status annotation
@@ -110,7 +115,7 @@ func (r *NodeReconciler) recordEvent(pod *corev1.Pod, eventtype, reason, msg str
 	if r.Recorder == nil {
 		return
 	}
-	r.Recorder.Eventf(pod, nil, eventtype, reason, actionResize, "%s", msg)
+	r.Recorder.Eventf(pod, nil, eventtype, reason, actionResize, "%s", msg[:min(len(msg), eventNoteLimit)])
 }
 
 // adjustMessage is the human line shared by the CPULimitAdjusted event in both
