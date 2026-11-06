@@ -121,9 +121,9 @@ func OptedOut(pod *corev1.Pod) bool {
 }
 
 // Eligible applies the pod-local eligibility gates Headroom needs before it may
-// manage a pod (§6.3): non-terminal, not opted out, Burstable QoS, a positive
-// CPU request, and no container that would restart on resize (§9.4.2). The
-// remaining §6.3 gates need cluster context and live in the reconciler:
+// manage a pod (§6.3): non-terminal, not opted out, no pod-level resources,
+// Burstable QoS, a positive CPU request, and no container that would restart on
+// resize (§9.4.2). The remaining §6.3 gates need cluster context and live in the reconciler:
 // namespace opt-in (NamespaceManaged), owner exclusion (OwnerExcluded), and node
 // exclusion (NodeManageable). A LimitRange caps a pod rather than excluding it
 // (LimitRangeCapMilli).
@@ -139,6 +139,9 @@ func Eligible(pod *corev1.Pod, rcs []ResizableContainer) bool {
 	if OptedOut(pod) {
 		return false
 	}
+	if HasPodLevelResources(pod) {
+		return false
+	}
 	// Only Burstable pods can gain a floating CPU limit without changing QoS:
 	// Guaranteed requires limit==request, BestEffort has no request to burst from
 	// and cannot have a limit added via resize (spike Q2b).
@@ -150,6 +153,14 @@ func Eligible(pod *corev1.Pod, rcs []ResizableContainer) bool {
 	}
 	// A container that would restart on resize disqualifies the whole pod.
 	return !HasRestartOnResize(rcs)
+}
+
+// HasPodLevelResources reports whether spec.resources sets anything, which
+// disqualifies the pod (§6.3): the resize is forbidden while its feature gate is
+// off, and with the gate on no container limit may exceed the pod-level limit.
+func HasPodLevelResources(pod *corev1.Pod) bool {
+	r := pod.Spec.Resources
+	return r != nil && (len(r.Requests) > 0 || len(r.Limits) > 0)
 }
 
 // HasRestartOnResize reports whether any resizable container would restart on a

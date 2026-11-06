@@ -142,6 +142,15 @@ func TestDefaultSuppressed(t *testing.T) {
 			pod:  pod(container(cApp, 100, 0)),
 		},
 		{
+			name: "pod-level resources seed nothing",
+			objs: []client.Object{config(nil), managedNS()},
+			pod: func() *corev1.Pod {
+				p := pod(container(cApp, 100, 0))
+				p.Spec.Resources = &corev1.ResourceRequirements{Limits: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("150m")}}
+				return p
+			}(),
+		},
+		{
 			name: "namespace not opted in",
 			objs: []client.Object{config(nil), &corev1.Namespace{Name: nsA}},
 			pod:  pod(container(cApp, 100, 0)),
