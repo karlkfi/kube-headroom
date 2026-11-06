@@ -190,7 +190,7 @@ below are the last word on that floor.
 ### 5.4 What counts in the sums
 
 - `allocatable_cpu`: from node status (already excludes system-reserved/kube-reserved).
-- `Σ requests` (for slack): **all** non-terminal pods bound to the node — managed, unmanaged, Guaranteed, DaemonSets, kube-system. Slack is physical truth.
+- `Σ requests` (for slack): **all** non-terminal pods bound to the node — managed, unmanaged, Guaranteed, DaemonSets, kube-system — each at what the scheduler books for it: pod overhead plus the pod-level request where set, otherwise plus the larger of its running containers and its init peak, following any resize in flight. Slack is what the scheduler could still place, so a node it treats as full has none, even after a large init container has exited.
 - `M` (for distribution): managed pods only. Unmanaged pods keep whatever limits they declared; their requests reduce `S` but they receive no share of it.
 - Pod-level: sum container requests (including sidecars per their effective-request rules); apply the pod's aggregate burst to containers pro-rata by their CPU requests. Containers with zero CPU request in a managed pod receive no computed burst (their limit, if any, is left untouched).
 - If `S ≤ 0` (node request-overcommitted — possible with unmanaged pressure): all managed limits = requests, apart from the QoS floor in §5.3. Degenerates to pure `cpu.weight` sharing, which is the correct behavior.

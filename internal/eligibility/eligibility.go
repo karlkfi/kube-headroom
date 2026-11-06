@@ -1,9 +1,8 @@
 // Package eligibility holds the pure, side-effect-free rules that decide which
 // pods Headroom may manage and how their CPU request/limit is enumerated (design
-// doc §6.3, §9.1). It depends only on core Kubernetes API types and the project's
-// label/annotation constants, so both the node reconciler (internal/controller)
-// and the birth-limit mutating webhook (internal/webhook) share one definition of
-// "manageable" instead of reimplementing the gates.
+// doc §6.3, §9.1). It holds no client or cache state, so both the node reconciler
+// (internal/controller) and the birth-limit mutating webhook (internal/webhook)
+// share one definition of "manageable" instead of reimplementing the gates.
 package eligibility
 
 import (
@@ -14,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	resourcehelper "k8s.io/component-helpers/resource"
 
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
 )
@@ -79,8 +79,8 @@ func PodTerminal(pod *corev1.Pod) bool {
 }
 
 // PodCPURequestMilli is the pod's aggregate CPU request over the containers
-// Headroom ranges over (§5.4 distribution basis for managed pods; slack basis
-// for all pods).
+// Headroom ranges over (§5.4 distribution basis for managed pods). Slack books
+// a pod at PodBookedCPUMilli instead.
 func PodCPURequestMilli(rcs []ResizableContainer) int64 {
 	var sum int64
 	for _, c := range rcs {
@@ -234,4 +234,16 @@ func UserCapMilli(pod *corev1.Pod) int64 {
 		return 0
 	}
 	return q.MilliValue()
+}
+
+// PodBookedCPUMilli is the CPU the scheduler books against the node for this pod
+// (§5.4 slack basis): overhead plus the pod-level request where set, else plus the
+// larger of the running containers and the init peak, following any resize in
+// flight. Options mirror framework.PodInfo.CalculateResource's default feature gates.
+func PodBookedCPUMilli(pod *corev1.Pod) int64 {
+	reqs := resourcehelper.PodRequests(pod, resourcehelper.PodResourcesOptions{
+		UseStatusResources: true,
+		InPlacePodLevelResourcesVerticalScalingEnabled: true,
+	})
+	return reqs.Cpu().MilliValue()
 }

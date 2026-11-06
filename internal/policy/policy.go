@@ -10,12 +10,12 @@ package policy
 import "math"
 
 // PodInput describes one pod bound to the node, reduced to the fields the
-// policy needs. RequestMilli is the pod's aggregate CPU request (sum of its
-// containers, including sidecars per their effective-request rules); the
-// reconciler splits the resulting pod target across containers pro-rata.
+// policy needs. RequestMilli is the aggregate CPU request of its resizable
+// containers; the reconciler splits the resulting pod target across them pro-rata.
 type PodInput struct {
 	Key               string
 	RequestMilli      int64
+	BookedDeltaMilli  int64 // scheduler's booking minus RequestMilli; moves slack only, never a pod's share
 	CurrentLimitMilli int64 // enforced limit today; 0 = unset
 	Managed           bool  // eligible + opted-in; only managed pods receive burst
 	UserCapMilli      int64 // optional per-pod ceiling (headroom.<prefix>/max-cpu); 0 = none
@@ -57,7 +57,7 @@ type Decision struct {
 // annotations, and metrics (§8.1), returned so it need not recompute them.
 type NodeStats struct {
 	AllocatableMilli     int64
-	TotalRequestsMilli   int64 // all non-terminal pods on the node (physical slack basis)
+	TotalRequestsMilli   int64 // all non-terminal pods on the node, as the scheduler books them (slack basis)
 	ManagedRequestsMilli int64 // M: managed pods only (distribution basis)
 	SlackMilli           int64 // S = allocatable − TotalRequests, floored at 0 for distribution
 	ManagedPods          int   // N: count of managed pods
@@ -71,8 +71,8 @@ func ComputeNode(allocatableMilli int64, pods []PodInput, cfg Config) []Decision
 	return decisions
 }
 
-// Compute is ComputeNode plus the node aggregates. Slack is defined from ALL
-// pods' requests (physical truth, §5.4); distribution divides slack across
+// Compute is ComputeNode plus the node aggregates. Slack is defined from what
+// the scheduler books for ALL pods (§5.4); distribution divides slack across
 // managed pods only. When slack ≤ 0 the node is request-overcommitted and every
 // managed limit collapses to its request, or just above it for a pod finalize
 // lifts — pure cpu.weight sharing (§5.4).
@@ -80,7 +80,7 @@ func Compute(allocatableMilli int64, pods []PodInput, cfg Config) (NodeStats, []
 	var totalReq, managedReq int64
 	var managedCount int
 	for _, p := range pods {
-		totalReq += p.RequestMilli
+		totalReq += p.RequestMilli + p.BookedDeltaMilli
 		if p.Managed {
 			managedReq += p.RequestMilli
 			managedCount++
