@@ -19,6 +19,7 @@ type PodInput struct {
 	CurrentLimitMilli int64 // enforced limit today; 0 = unset
 	Managed           bool  // eligible + opted-in; only managed pods receive burst
 	UserCapMilli      int64 // optional per-pod ceiling (headroom.<prefix>/max-cpu); 0 = none
+	AboveRequest      bool  // limit == request would make the pod Guaranteed, which resize refuses (§4.1)
 }
 
 // Config holds the tunable policy knobs (design doc §9.2). Zero value is not
@@ -73,7 +74,8 @@ func ComputeNode(allocatableMilli int64, pods []PodInput, cfg Config) []Decision
 // Compute is ComputeNode plus the node aggregates. Slack is defined from ALL
 // pods' requests (physical truth, §5.4); distribution divides slack across
 // managed pods only. When slack ≤ 0 the node is request-overcommitted and every
-// managed limit collapses to its request — pure cpu.weight sharing (§5.4).
+// managed limit collapses to its request, or just above it for a pod finalize
+// lifts — pure cpu.weight sharing (§5.4).
 func Compute(allocatableMilli int64, pods []PodInput, cfg Config) (NodeStats, []Decision) {
 	var totalReq, managedReq int64
 	var managedCount int
@@ -164,8 +166,15 @@ func clampAndQuantize(raw, req, allocatable, userCap int64, cfg Config) int64 {
 	return target
 }
 
-// finalize applies the deadband/hysteresis rule (§6.2b) to set Apply.
+// finalize lifts a target the apiserver would refuse to the next quantum above
+// request, ahead of every cap (§5.3), then applies the deadband/hysteresis rule
+// (§6.2b) to set Apply.
 func finalize(p PodInput, target int64, reason string, cfg Config) Decision {
+	if p.AboveRequest && target <= p.RequestMilli {
+		q := max(cfg.QuantumMilli, 1)
+		target = (p.RequestMilli/q + 1) * q
+		reason = "limit=request would make the pod Guaranteed"
+	}
 	d := Decision{Key: p.Key, TargetLimitMilli: target, Reason: reason}
 	cur := p.CurrentLimitMilli
 	switch {

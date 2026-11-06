@@ -23,12 +23,12 @@ import (
 )
 
 // These specs cover the §6.4 resize-error outcomes in classifyResizeError. Unlike
-// the envtest specs (which drive a real apiserver that accepts every resize
-// patch), here the resize subresource PATCH is intercepted on a controller-runtime
-// fake client and made to fail, so the refusal table — 403 → quota-denied,
-// Conflict → requeue, generic → bubble — is exercised directly. Quota 403 is a
-// Phase-0-validated failure path (spike Q2c) and a §8.6 alerting signal, so it
-// must not stay untested.
+// the envtest specs (which drive a real apiserver that refuses only what its
+// validation refuses), here the resize subresource PATCH is intercepted on a
+// controller-runtime fake client and made to fail, so the refusal table — 403 →
+// quota-denied, Conflict → requeue, generic → bubble — is exercised directly. Quota
+// 403 is a Phase-0-validated failure path (spike Q2c) and a §8.6 alerting signal, so
+// it must not stay untested.
 
 const errNodeName = "err-node"
 
@@ -92,9 +92,20 @@ func resizeErrPod(name string) *corev1.Pod {
 // config, node, namespace, and pod, whose resize-subresource PATCH is intercepted
 // to fail with resizeErr. It returns the reconciler and its fake recorder.
 func newResizeErrReconciler(podName string, resizeErr error) (*NodeReconciler, *events.FakeRecorder) {
+	return newPerPodResizeReconciler(func(string) error { return resizeErr }, podName)
+}
+
+// newPerPodResizeReconciler is newResizeErrReconciler with each pod's resize
+// outcome chosen by name.
+func newPerPodResizeReconciler(resizeErr func(pod string) error, podNames ...string) (*NodeReconciler, *events.FakeRecorder) {
+	objs := make([]client.Object, 0, 3+len(podNames))
+	objs = append(objs, resizeErrConfig(), resizeErrNode(), resizeErrNamespace())
+	for _, name := range podNames {
+		objs = append(objs, resizeErrPod(name))
+	}
 	c := fake.NewClientBuilder().
 		WithScheme(scheme.Scheme).
-		WithObjects(resizeErrConfig(), resizeErrNode(), resizeErrNamespace(), resizeErrPod(podName)).
+		WithObjects(objs...).
 		WithIndex(&corev1.Pod{}, podNodeNameIndex, func(o client.Object) []string {
 			n := o.(*corev1.Pod).Spec.NodeName
 			if n == "" {
@@ -103,11 +114,11 @@ func newResizeErrReconciler(podName string, resizeErr error) (*NodeReconciler, *
 			return []string{n}
 		}).
 		WithInterceptorFuncs(interceptor.Funcs{
-			SubResourcePatch: func(_ context.Context, _ client.Client, subResourceName string, _ client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) error {
+			SubResourcePatch: func(_ context.Context, _ client.Client, subResourceName string, obj client.Object, _ client.Patch, _ ...client.SubResourcePatchOption) error {
 				// Only the resize subresource is patched in this path; fail it so the
 				// §6.4 classifier runs on a real error.
 				if subResourceName == "resize" {
-					return resizeErr
+					return resizeErr(obj.GetName())
 				}
 				return nil
 			},
@@ -181,5 +192,34 @@ var _ = Describe("NodeReconciler resize-error outcomes (§6.4)", func() {
 		Expect(testutil.ToFloat64(resizesTotal.WithLabelValues(resultError))).
 			To(Equal(before + 1))
 		Expect(r.inBackoff(podStub("errorpod"))).To(BeFalse())
+	})
+
+	It("resizes the rest of the node past a failed pod, reports every failure, and retries", func() {
+		boomA, boomC := errors.New("reset on a"), errors.New("reset on c")
+		failing := map[string]error{"a-fails": boomA, "c-fails": boomC}
+		var attempted []string
+		r, _ := newPerPodResizeReconciler(func(pod string) error {
+			attempted = append(attempted, pod)
+			return failing[pod]
+		}, "a-fails", "b-ok", "c-fails", "d-ok")
+
+		beforeErr := testutil.ToFloat64(resizesTotal.WithLabelValues(resultError))
+		beforeApplied := testutil.ToFloat64(resizesTotal.WithLabelValues(resultApplied))
+		_, err := runReconcile(r)
+
+		Expect(attempted).To(Equal([]string{"a-fails", "b-ok", "c-fails", "d-ok"}))
+		// The error is what requeues the node with backoff, so the pass must still return it.
+		Expect(errors.Is(err, boomA)).To(BeTrue(), "a-fails must surface: %v", err)
+		Expect(errors.Is(err, boomC)).To(BeTrue(), "c-fails must surface: %v", err)
+		Expect(testutil.ToFloat64(resizesTotal.WithLabelValues(resultError))).To(Equal(beforeErr + 2))
+		Expect(testutil.ToFloat64(resizesTotal.WithLabelValues(resultApplied))).To(Equal(beforeApplied + 2))
+		Expect(r.inBackoff(podStub("a-fails"))).To(BeFalse(), "an unclassified failure retries on the requeue, not after a backoff window")
+
+		By("clearing the failures, the requeued pass retries both pods and succeeds")
+		clear(failing)
+		attempted = nil
+		_, err = runReconcile(r)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(attempted).To(ContainElements("a-fails", "c-fails"))
 	})
 })

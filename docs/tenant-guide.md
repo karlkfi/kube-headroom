@@ -101,7 +101,12 @@ metadata:
     kube-headroom.dev/max-cpu: "4"   # never raise this pod's limit above 4 cores
 ```
 
-Headroom will never set the limit above `min(nodeAllocatable, your max-cpu)`.
+Headroom will never set the limit above `min(nodeAllocatable, your max-cpu)`,
+with one exception: a floor outranks the cap. The limit never drops below your
+CPU request. If every container's memory request equals its memory limit, it
+stays one quantum (10m by default) above that request, because Kubernetes
+refuses a resize that would make the pod Guaranteed. So a memory-pinned pod with
+a 100m request and `max-cpu: 100m` runs at 110m.
 
 ## Runtimes that read CPU quota once at startup
 

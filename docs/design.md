@@ -180,9 +180,9 @@ Applied in order **after** the base computation and the §5.2 floor — so the c
 always win: the floor can raise a limit, but a subsequent cap clamps it back
 down. In particular a slack-aware floor can never push a limit above
 `request × maxMultiplier` or above `min(nodeAllocatable, userCap)`; the clamps
-below are the last word.
+below are the last word on that floor.
 
-1. `limit_i ≥ request_i` — always (also required to stay Burstable-legal).
+1. `limit_i ≥ request_i` — always (also required to stay Burstable-legal). A pod that `limit_i = request_i` would make Guaranteed (every container's memory limit equals its memory request) instead gets the next quantum above its request, because resize refuses the QoS change (§4.1). This is the one floor that outranks the clamps below.
 2. `limit_i ≤ request_i × maxMultiplier` (default 10×) — bounds how far behavior on an idle node can diverge from behavior on a busy one, so a pod's "empty-node personality" isn't wildly misleading about its "busy-node personality." Tunable; set to `0` to disable (the CRD's `maxMultiplier: "0"` sentinel).
 3. `limit_i ≤ min(nodeAllocatable, userCap_i)` where `userCap_i` is an optional per-pod annotation (`kube-headroom.dev/max-cpu`) for workloads that genuinely shouldn't exceed some parallelism (e.g., GOMAXPROCS-pinned Go services — note limits don't change GOMAXPROCS automatically; runtime tuning is the user's job and worth a docs callout, since a Go binary that read GOMAXPROCS from its limit at startup won't exploit a raised ceiling anyway).
 4. Rounding: quantize to `10m` to avoid patch churn from arithmetic noise.
@@ -193,7 +193,7 @@ below are the last word.
 - `Σ requests` (for slack): **all** non-terminal pods bound to the node — managed, unmanaged, Guaranteed, DaemonSets, kube-system. Slack is physical truth.
 - `M` (for distribution): managed pods only. Unmanaged pods keep whatever limits they declared; their requests reduce `S` but they receive no share of it.
 - Pod-level: sum container requests (including sidecars per their effective-request rules); apply the pod's aggregate burst to containers pro-rata by their CPU requests. Containers with zero CPU request in a managed pod receive no computed burst (their limit, if any, is left untouched).
-- If `S ≤ 0` (node request-overcommitted — possible with unmanaged pressure): all managed limits = requests. Degenerates to pure `cpu.weight` sharing, which is the correct behavior.
+- If `S ≤ 0` (node request-overcommitted — possible with unmanaged pressure): all managed limits = requests, apart from the QoS floor in §5.3. Degenerates to pure `cpu.weight` sharing, which is the correct behavior.
 
 ### 5.5 Requests-driven, not usage-driven (explicit trade-off)
 
@@ -253,6 +253,7 @@ rejects such pods at CREATE ([runbook](runbook.md#require-cpu-requests)).
 - **`Deferred`:** kubelet retries on its own; controller does nothing but track a gauge. A deferred *limit-only increase* should be rare (no allocation change), so a sustained deferred count is an alerting signal.
 - **Quota `403 Forbidden`:** a `limits.cpu` ResourceQuota in the namespace makes an over-budget raise fail **admission** with a 403 — a distinct signal from kubelet `Infeasible` (Phase 0 spike Q2c, [`plan/archive/phase0-resize-spike.md`](plan/archive/phase0-resize-spike.md); quota is delta-accounted on resize). Treat it like `Infeasible`: mark the pod ineligible for `backoffPeriod`, emit a warning event, increment `headroom_resizes_total{result="quota-denied"}`. The durable fix is operational: managed namespaces must quota on `requests.cpu` only (§8.3, preflight).
 - **Conflict / stale generation:** requeue the node; the next reconcile recomputes from current state. `status.observedGeneration` distinguishes "kubelet hasn't seen it" from "kubelet rejected it."
+- **Any other patch error:** carry on with the node's remaining pods, then return every failure from the reconcile so the node requeues with backoff. Each one increments `headroom_resizes_total{result="error"}`.
 - **Pod resized by another actor:** the eligibility check plus fieldManager keeps ownership clean; Headroom owns `limits.cpu` on managed pods and nothing else. Document that manual `--subresource resize` edits to managed pods' CPU limits will be overwritten.
 
 ### 6.5 Mutating admission webhook (MVP component — promoted from Phase 2)
@@ -400,7 +401,7 @@ type Decision struct {
 func ComputeNode(allocatableMilli int64, pods []PodInput, cfg Config) []Decision
 ```
 
-Every policy question in Section 5 becomes a table test against this function; property tests assert the invariants: `request ≤ limit ≤ min(allocatable, caps)`, scale-invariance under pod-splitting, monotonicity (adding a pod never *raises* anyone else's limit), and `S ≤ 0 ⇒ all limits = requests`.
+Every policy question in Section 5 becomes a table test against this function; property tests assert the invariants: `request ≤ limit ≤ min(allocatable, caps)` apart from the QoS floor, scale-invariance under pod-splitting, monotonicity (adding a pod never *raises* anyone else's limit), and `S ≤ 0 ⇒ all limits = requests` apart from the QoS floor (§5.3).
 
 ### 9.3 HeadroomConfig CRD (cluster-scoped, singleton)
 
