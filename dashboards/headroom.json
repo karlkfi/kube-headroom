@@ -642,7 +642,7 @@
               "custom": {
                 "axisCenteredZero": false,
                 "axisColorMode": "text",
-                "axisLabel": "factor",
+                "axisLabel": "deferred pods",
                 "axisPlacement": "auto",
                 "barAlignment": 0,
                 "drawStyle": "line",
@@ -671,7 +671,6 @@
               },
               "mappings": [],
               "unit": "none",
-              "axisLabel": "deferred pods",
               "min": 0
             },
             "overrides": []

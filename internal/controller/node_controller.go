@@ -715,7 +715,8 @@ func (r *NodeReconciler) podEventHandler() handler.EventHandler {
 
 // podUpdateRelevant filters pod updates down to the ones that can change a
 // node's slack or a managed limit (§6.2 step 1): binding, terminal transition,
-// or a CPU-request change (e.g. VPA resizing an unmanaged pod).
+// a CPU-request change (e.g. VPA resizing an unmanaged pod), or the kubelet
+// starting or ending a Deferred resize (§6.4).
 func podUpdateRelevant(e event.UpdateEvent) bool {
 	oldPod, ok1 := e.ObjectOld.(*corev1.Pod)
 	newPod, ok2 := e.ObjectNew.(*corev1.Pod)
@@ -731,6 +732,9 @@ func podUpdateRelevant(e event.UpdateEvent) bool {
 	}
 	if eligibility.PodTerminal(oldPod) != eligibility.PodTerminal(newPod) {
 		return true
+	}
+	if podResizeDeferred(oldPod) != podResizeDeferred(newPod) {
+		return true // the deferred-resize gauge is set only in Reconcile
 	}
 	return eligibility.PodCPURequestMilli(eligibility.ResizableContainers(oldPod)) != eligibility.PodCPURequestMilli(eligibility.ResizableContainers(newPod))
 }

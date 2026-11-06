@@ -5,6 +5,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
@@ -47,5 +48,12 @@ var _ = Describe("NodeReconciler deferred-resize gauge (§6.4)", func() {
 		r, _ := newResizeErrReconciler("settled", nil)
 		r.forgetNode("gone-node")
 		Expect(testutil.CollectAndCount(nodeResizesDeferred)).To(Equal(before))
+	})
+
+	It("enqueues the node when a pod enters or leaves Deferred, since only Reconcile sets the gauge", func() {
+		plain, held := resizeErrPod("p"), deferredPod("p", corev1.PodReasonDeferred)
+		Expect(podUpdateRelevant(event.UpdateEvent{ObjectOld: plain, ObjectNew: held})).To(BeTrue())
+		Expect(podUpdateRelevant(event.UpdateEvent{ObjectOld: held, ObjectNew: plain})).To(BeTrue())
+		Expect(podUpdateRelevant(event.UpdateEvent{ObjectOld: plain, ObjectNew: resizeErrPod("p")})).To(BeFalse())
 	})
 })
