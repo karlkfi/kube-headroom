@@ -99,6 +99,33 @@ func TestEligible(t *testing.T) {
 			want: false,
 		},
 		{
+			name: "pod-level resources are excluded",
+			pod: func() *corev1.Pod {
+				p := burstablePod("level", container(cApp, 100, 0))
+				p.Spec.Resources = &corev1.ResourceRequirements{Limits: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("128Mi")}}
+				return p
+			}(),
+			want: false,
+		},
+		{
+			name: "pod-level requests alone are excluded",
+			pod: func() *corev1.Pod {
+				p := burstablePod("level-req", container(cApp, 100, 0))
+				p.Spec.Resources = &corev1.ResourceRequirements{Requests: corev1.ResourceList{corev1.ResourceMemory: resource.MustParse("64Mi")}}
+				return p
+			}(),
+			want: false,
+		},
+		{
+			name: "empty pod-level resources are eligible",
+			pod: func() *corev1.Pod {
+				p := burstablePod("empty", container(cApp, 100, 0))
+				p.Spec.Resources = &corev1.ResourceRequirements{}
+				return p
+			}(),
+			want: true,
+		},
+		{
 			name: "cpu resizePolicy RestartContainer is excluded",
 			pod:  burstablePod("restart", restartCPU),
 			want: false,

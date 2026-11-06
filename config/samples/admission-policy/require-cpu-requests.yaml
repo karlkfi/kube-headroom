@@ -1,11 +1,13 @@
-# Optional: reject pods in Headroom-managed namespaces that have a long-running
-# container without a CPU request.
+# Optional: reject pods in Headroom-managed namespaces that would have a
+# long-running container with no CPU ceiling.
 #
 # Headroom caps only containers that request CPU (design §5.4, §6.3). A
 # request-less container in an otherwise-managed pod gets no limit and runs
 # unbounded — and a Docker-in-Docker or other sidecar that runs the pod's real
-# work is the usual way that happens. This policy closes the gap at admission so
-# every long-running container in a managed pod is one Headroom can cap.
+# work is the usual way that happens. Headroom also never caps a pod that sets
+# pod-level spec.resources (design §6.3), so such a pod needs a ceiling of its
+# own: a pod-level CPU limit, or a CPU limit on every long-running container.
+# This policy closes both gaps at admission. The name predates the second rule.
 #
 # Requires Kubernetes >= 1.30 (ValidatingAdmissionPolicy is GA there); Headroom
 # itself needs >= 1.35. Not installed by the Helm charts — apply it yourself:
@@ -44,11 +46,29 @@ spec:
             'cpu' in c.resources.requests &&
             quantity(c.resources.requests['cpu']).isGreaterThan(quantity('0'))))
           .map(c, c.name)
+    # Counts an empty `resources: {}` too: Kubernetes 1.35 and 1.36.1 class that
+    # pod BestEffort whatever its containers request, so Headroom leaves it alone.
+    - name: podLevelWithoutCPULimit
+      expression: >-
+        has(object.spec.resources) &&
+        !(has(object.spec.resources.limits) && 'cpu' in object.spec.resources.limits)
+    - name: noCPULimit
+      expression: >-
+        variables.longRunning
+          .filter(c, !(has(c.resources) && has(c.resources.limits) && 'cpu' in c.resources.limits))
+          .map(c, c.name)
   validations:
     - expression: size(variables.missing) == 0
       messageExpression: >-
         'kube-headroom: app and sidecar containers in a managed namespace need a CPU
         request > 0, or Headroom cannot cap them; missing on: ' + variables.missing.join(', ')
+      reason: Invalid
+    - expression: '!variables.podLevelWithoutCPULimit || size(variables.noCPULimit) == 0'
+      messageExpression: >-
+        'kube-headroom: this pod sets spec.resources and has no CPU ceiling, and Headroom
+        may never cap it; delete spec.resources if it is empty, set
+        spec.resources.limits.cpu, or set a CPU limit on: ' +
+        variables.noCPULimit.join(', ')
       reason: Invalid
 ---
 apiVersion: admissionregistration.k8s.io/v1

@@ -56,8 +56,10 @@ metadata:
     kube-headroom.dev/mode: unmanaged
 ```
 
-Pods that are Guaranteed QoS, BestEffort, or have no CPU request are never
-managed regardless of labels (see [applicability](applicability.md)).
+Pods that are Guaranteed QoS, BestEffort, set pod-level `spec.resources`, or have
+no CPU request are never managed regardless of labels (see [applicability](applicability.md)).
+A pod with pod-level `spec.resources` gets no birth limit from Headroom either, so
+without a pod-level CPU limit, any container with no CPU limit has no ceiling at all.
 
 ## Every container that does work needs a CPU request
 
@@ -75,7 +77,9 @@ heavy work, or a data loader.
 Give every app and sidecar container that does real work a CPU request sized for
 that work. Your platform team may enforce this with an admission policy, in which
 case a pod missing a request is rejected and the error names the container; for
-a Deployment or Job, look for a `FailedCreate` event on its ReplicaSet or Job.
+a Deployment or Job, look for a `FailedCreate` event on its ReplicaSet or Job. The
+same policy rejects a pod with pod-level `spec.resources` and no CPU ceiling: set
+`spec.resources.limits.cpu`, or a CPU limit on the containers the error names.
 
 ## "I'm being throttled / I need more CPU"
 

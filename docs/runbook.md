@@ -162,7 +162,8 @@ inside that unbounded cgroup.
 The controller does not reject or rewrite such pods; that is policy, and it
 belongs to the platform. Headroom ships an **opt-in** `ValidatingAdmissionPolicy`
 that rejects, at CREATE, any pod in a managed namespace with an app or sidecar
-(restartable-init) container whose CPU request is missing or zero:
+(restartable-init) container whose CPU request is missing or zero, or a pod with
+pod-level resources and no CPU ceiling:
 
 - [`config/samples/admission-policy/require-cpu-requests.yaml`](https://github.com/karlkfi/kube-headroom/blob/main/config/samples/admission-policy/require-cpu-requests.yaml)
 
@@ -193,6 +194,19 @@ The policy also rejects BestEffort pods in managed namespaces, since they have n
 request on any container and Headroom cannot cap them either. Regular
 (run-to-completion) init containers are not checked: Headroom never resizes them.
 
+It also rejects a pod that sets pod-level `spec.resources` unless the pod has a
+CPU ceiling of its own: a pod-level CPU limit, or a CPU limit on every app and
+sidecar container. Headroom never caps these pods (design §6.3), so without the
+policy they can run unbounded. An empty `resources: {}` counts too: Kubernetes 1.35
+and 1.36.1 class that pod BestEffort whatever its containers request, so Headroom
+leaves it uncapped, and deleting the block puts the pod back under Headroom.
+On 1.37 this rejects a pod Headroom would have managed, until the block is deleted.
+
+The policy keeps its name, so re-running the `kubectl apply -k` above updates an
+existing install in place, and this rule does not apply until you do. Under the
+sample's `Deny` it enforces at once, so a Deployment with this shape fails its next
+rollout with `FailedCreate`; trial it with `[Warn, Audit]` first, as in step 2.
+
 **No mutating variant ships.** A `MutatingAdmissionPolicy` could inject a default
 request instead of rejecting, but it is GA only from Kubernetes 1.36 (beta and
 off by default in 1.35, Headroom's floor), and a small default is the wrong fix
@@ -200,6 +214,35 @@ anyway: a 100m default request on a dind sidecar makes the sidecar managed with 
 ceiling of at most 1 CPU (100m × the default `maxMultiplier` of 10), so the build
 that ran there is throttled instead of unbounded. The request has to be sized by
 the team that knows where the work runs, which is what rejection forces.
+
+### A LimitRange CPU default: an option, with warnings
+
+<a id="limitrange-default"></a>
+A namespace LimitRange with `default.cpu` gives a pod with pod-level resources a
+fixed limit where it would otherwise have none, and Headroom never adjusts it. It
+applies to every pod in the namespace, not only those, so the
+[policy above](#require-cpu-requests) is the narrower way to close the gap.
+
+These were measured with `default.cpu: 2` in a managed namespace, on Kubernetes
+1.35 and 1.37 unless noted:
+
+- **`defaultRequest` is filled in from `default`.** A container with no CPU request
+  gets a request of 2 and books 2 CPUs. On 1.35, a request-less sidecar did this
+  and the app beside it fell from 580m to 145m.
+- **A pod requesting more than the default with no limit is refused at create.** A
+  request of 4 failed with `must be less than or equal to cpu limit of 2`.
+- **The webhook's birth limit is replaced.** On 1.35, a pod requesting 100m was born
+  at 2 instead of 200m. The controller still manages it afterwards.
+- **Some pods with pod-level resources are refused at create:** a pod-level CPU
+  limit below the default, and a pod-level CPU request below the default with no
+  container request.
+- **A pod that pins memory and sets no CPU books the default.** A single-container
+  pod like this, unmanaged before, became Guaranteed at a fixed request and limit of
+  2.
+
+It also lets a request-less container pass the policy's request rule, and a pod with
+pod-level memory pass its ceiling rule, because the default lands before the policy
+runs. That was admitted on both versions.
 
 ---
 

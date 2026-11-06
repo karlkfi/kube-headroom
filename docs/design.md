@@ -222,7 +222,7 @@ The unit of reconciliation is the **node**, not the pod — every scheduling eve
 
 ### 6.3 Pod eligibility
 
-A pod is managed iff **all** of: its namespace is labeled `kube-headroom.dev/mode: managed` (or matched by `spec.namespaceSelector`); the pod itself does not set `kube-headroom.dev/mode: unmanaged`; QoS class Burstable; the pod's total CPU **request > 0**, summed over app and restartable-init (sidecar) containers; no container whose CPU `resizePolicy` is `RestartContainer` (§9.4.2); not on a Windows node or a node with static CPU/Memory Manager policy (detect via node labels/config, plus handle `Infeasible` defensively); pod not owned by anything in an operator-configured exclusion list (kube-system excluded by default).
+A pod is managed iff **all** of: its namespace is labeled `kube-headroom.dev/mode: managed` (or matched by `spec.namespaceSelector`); the pod itself does not set `kube-headroom.dev/mode: unmanaged`; no pod-level resources (`spec.resources`); QoS class Burstable; the pod's total CPU **request > 0**, summed over app and restartable-init (sidecar) containers; no container whose CPU `resizePolicy` is `RestartContainer` (§9.4.2); not on a Windows node or a node with static CPU/Memory Manager policy (detect via node labels/config, plus handle `Infeasible` defensively); pod not owned by anything in an operator-configured exclusion list (kube-system excluded by default).
 
 The `mode` gate uses **enum keywords** (`managed`/`unmanaged`), not booleans, so an
 unquoted YAML 1.1 token (`true`/`yes`) cannot silently coerce; it is
@@ -235,6 +235,24 @@ limit on first reconcile. The hard gate that remains is **CPU request > 0**:
 adding a limit to a BestEffort pod (no request) is refused by the apiserver. The
 Phase 2 webhook (§6.5) remains useful only for pods too short-lived for the
 controller to reach in time.
+
+Pod-level resources disqualify a pod on every version, because a resize cannot
+be relied on there. Kubernetes 1.35 forbids resizing such a pod while the
+`InPlacePodLevelResourcesVerticalScaling` gate is off, which is its default. 1.36.1
+and 1.37 have the gate on and allow a shrink, but refuse any container limit above
+a pod-level CPU limit, and on 1.37 a pod that sets only memory can get that limit
+filled in from its containers at create. A pod-level CPU limit, set or filled in,
+bounds the pod in its own cgroup. Without one, a container with no CPU limit has
+no ceiling at all, because Headroom gives it no birth limit and never resizes it;
+the optional admission policy rejects that shape where it is applied. The webhook
+applies the same gate, because the controller would never adjust a seed, and one
+above a pod-level CPU limit would fail the pod's create. The cost with the gate on
+runs both ways. A pod could shrink on a full node and now keeps its limit, and a limit
+Headroom set before the upgrade stays until the pod is recreated, even with slack
+free. An empty `resources: {}` is not pod-level resources to this gate, but what
+happens next depends on the version: 1.37 keeps such a pod Burstable and Headroom
+manages it, while 1.35 and 1.36.1 class it BestEffort whatever its containers
+request, so Headroom does not.
 
 The request gate is **pod-level, not per-container**. A managed pod may contain a
 container with no CPU request; that container receives no limit (§5.4, it has no
@@ -328,6 +346,7 @@ Headroom is opt-in per namespace precisely because fit varies by workload class:
 | NUMA-pinned / static CPU Manager nodes (common on dedicated training nodes) | **Excluded structurally** | In-place resize is prohibited with static CPU/Memory Manager policies; these nodes are typically dedicated and fully booked anyway |
 | Guaranteed QoS pods | **Excluded structurally** | Resize cannot change QoS class; requests must stay == limits |
 | BestEffort pods | **Excluded structurally** | Resources cannot be added via resize; no request → no weight basis either |
+| Pods with pod-level resources (`spec.resources`) | **Excluded structurally** | A resize is refused or stopped at the pod-level limit, depending on the version (§6.3) |
 | Runtimes that read CPU quota once at startup (JVM ergonomics, boot-time automaxprocs) | **Partial benefit — document** | The cgroup ceiling rises but the runtime's thread-pool sizing doesn't follow. Admission-time seeding gives a good birth limit; full benefit needs quota re-reading in the runtime. Tenant guide must cover this |
 | Windows pods | **Excluded structurally** | In-place resize unsupported |
 

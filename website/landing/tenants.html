@@ -293,7 +293,7 @@
         </div>
         <div class="howto-item">
           <h3><span class="dot" style="background:var(--purple)"></span>Opt a pod out</h3>
-          <p>Enrollment is per namespace; excluding one workload is a pod-template label. Guaranteed and BestEffort pods are never managed regardless.</p>
+          <p>Enrollment is per namespace; excluding one workload is a pod-template label. Guaranteed pods, BestEffort pods and pods with pod-level resources are never managed regardless.</p>
           <pre><code>metadata:
   labels:
     kube-headroom.dev/mode: unmanaged</code></pre>

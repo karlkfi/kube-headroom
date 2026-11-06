@@ -489,6 +489,31 @@ var _ = Describe("NodeReconciler", func() {
 		Expect(applied.Spec.InitContainers[1].Resources.Limits.Cpu().MilliValue()).To(Equal(int64(1000)))
 	})
 
+	It("leaves a pod with pod-level resources unmanaged and resizes the rest of its node", func() {
+		applyConfig(false)
+		makeManagedNamespace()
+		node := nextNode()
+		makeNode(node, 8)
+		pod := &corev1.Pod{Name: "a-podlevel", Namespace: nsA, Spec: corev1.PodSpec{
+			NodeName:   node,
+			Containers: []corev1.Container{qosContainer(cApp, 100, 200, 0, 0)},
+			Resources: &corev1.ResourceRequirements{
+				Requests: corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("100m")},
+				Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1")},
+			},
+		}}
+		Expect(k8sClient.Create(ctx, pod)).To(Succeed())
+		makeBurstablePod(nsA, "plain", node, 100, 0)
+
+		reconcileNode(node)
+
+		var applied, plain corev1.Pod
+		Expect(k8sClient.Get(ctx, client.ObjectKeyFromObject(pod), &applied)).To(Succeed())
+		Expect(applied.Spec.Containers[0].Resources.Limits.Cpu().MilliValue()).To(Equal(int64(200)))
+		Expect(k8sClient.Get(ctx, types.NamespacedName{Namespace: nsA, Name: "plain"}, &plain)).To(Succeed())
+		Expect(plain.Spec.Containers[0].Resources.Limits.Cpu().MilliValue()).To(BeNumerically(">", 100))
+	})
+
 	It("resizes a pod whose only CPU request is on its native sidecar", func() {
 		applyConfig(false)
 		makeManagedNamespace()

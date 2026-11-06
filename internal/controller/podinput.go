@@ -32,7 +32,7 @@ func buildPodInput(pod *corev1.Pod, rcs []eligibility.ResizableContainer, manage
 // pod-level resources set the QoS class themselves, and a container resize cannot
 // move them.
 func guaranteedAtRequest(pod *corev1.Pod) bool {
-	if r := pod.Spec.Resources; r != nil && (len(r.Requests) > 0 || len(r.Limits) > 0) {
+	if eligibility.HasPodLevelResources(pod) {
 		return false
 	}
 	pinned := func(c *corev1.Container) bool {
