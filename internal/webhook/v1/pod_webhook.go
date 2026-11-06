@@ -62,7 +62,8 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, pod *corev1.Pod) error
 	}
 	// Same pod-local gates the controller applies (§6.3), minus the QoS-class check
 	// (status.qosClass is unset at admission): opt-out, pod-level resources and
-	// restart-on-resize. A seed above a pod-level CPU limit would fail the pod's create.
+	// restart-on-resize. The controller would never adjust a seed on a pod with
+	// pod-level resources, and one above its pod-level CPU limit would fail the create.
 	if eligibility.OptedOut(pod) || eligibility.HasPodLevelResources(pod) {
 		return nil
 	}
