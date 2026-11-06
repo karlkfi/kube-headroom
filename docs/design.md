@@ -222,7 +222,7 @@ The unit of reconciliation is the **node**, not the pod — every scheduling eve
 
 ### 6.3 Pod eligibility
 
-A pod is managed iff **all** of: its namespace is labeled `kube-headroom.dev/mode: managed` (or matched by `spec.namespaceSelector`); the pod itself does not set `kube-headroom.dev/mode: unmanaged`; QoS class Burstable; the pod's total CPU **request > 0**, summed over app and restartable-init (sidecar) containers; no container whose CPU `resizePolicy` is `RestartContainer` (§9.4.2); not on a Windows node or a node with static CPU/Memory Manager policy (detect via node labels/config, plus handle `Infeasible` defensively); pod not owned by anything in an operator-configured exclusion list (kube-system excluded by default).
+A pod is managed iff **all** of: its namespace is labeled `kube-headroom.dev/mode: managed` (or matched by `spec.namespaceSelector`); the pod itself does not set `kube-headroom.dev/mode: unmanaged`; no pod-level resources (`spec.resources`); QoS class Burstable; the pod's total CPU **request > 0**, summed over app and restartable-init (sidecar) containers; no container whose CPU `resizePolicy` is `RestartContainer` (§9.4.2); not on a Windows node or a node with static CPU/Memory Manager policy (detect via node labels/config, plus handle `Infeasible` defensively); pod not owned by anything in an operator-configured exclusion list (kube-system excluded by default).
 
 The `mode` gate uses **enum keywords** (`managed`/`unmanaged`), not booleans, so an
 unquoted YAML 1.1 token (`true`/`yes`) cannot silently coerce; it is
@@ -235,6 +235,17 @@ limit on first reconcile. The hard gate that remains is **CPU request > 0**:
 adding a limit to a BestEffort pod (no request) is refused by the apiserver. The
 Phase 2 webhook (§6.5) remains useful only for pods too short-lived for the
 controller to reach in time.
+
+Pod-level resources disqualify a pod on every version, because a resize cannot
+be relied on there. Kubernetes 1.35 forbids resizing such a pod while the
+`InPlacePodLevelResourcesVerticalScaling` gate is off, which is its default. 1.37
+turns the gate on and allows a shrink, but refuses any container limit above the
+pod-level limit, and a pod that sets only memory can get a pod-level CPU limit
+filled in from its containers at create. That limit already bounds the pod in its
+own cgroup. The cost is on 1.37, where such a pod could shrink on a full node and
+now keeps its limit. The webhook applies the same gate, because a birth limit
+seeded above the pod-level limit would fail the pod's create. An empty
+`resources: {}` sets nothing and does not count.
 
 The request gate is **pod-level, not per-container**. A managed pod may contain a
 container with no CPU request; that container receives no limit (§5.4, it has no

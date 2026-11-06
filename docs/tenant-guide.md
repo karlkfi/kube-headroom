@@ -56,8 +56,8 @@ metadata:
     kube-headroom.dev/mode: unmanaged
 ```
 
-Pods that are Guaranteed QoS, BestEffort, or have no CPU request are never
-managed regardless of labels (see [applicability](applicability.md)).
+Pods that are Guaranteed QoS, BestEffort, set pod-level `spec.resources`, or have
+no CPU request are never managed regardless of labels (see [applicability](applicability.md)).
 
 ## Every container that does work needs a CPU request
 
