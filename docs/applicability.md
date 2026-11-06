@@ -81,8 +81,9 @@ Full detail is in design §8.3; the operational preflight is in the
   Crane) must **not** run on Headroom-managed nodes.
 - **ResourceQuota:** managed namespaces must quota on `requests.cpu` **only** — a
   `limits.cpu` quota makes raises 403 (see the [runbook preflight](runbook.md#preflight)).
-- **LimitRange:** a `max` on CPU limits caps what Headroom can set; safe, but the
-  ceiling plateaus at the `max`. A `default.cpu` affects every pod in the namespace
+- **LimitRange:** a `max` on CPU limits caps what Headroom can set, and the
+  ceiling plateaus at the `max`. A `max` alone also becomes the namespace's `default`
+  and `defaultRequest`, which carry the side effects below. A `default.cpu` affects every pod in the namespace
   and can refuse some at create; see the
   [runbook's warnings](runbook.md#limitrange-default).
 - **Cluster autoscaler / Karpenter:** operate on requests; unaffected.
