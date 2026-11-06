@@ -26,10 +26,11 @@ func buildPodInput(pod *corev1.Pod, rcs []eligibility.ResizableContainer, manage
 // guaranteedAtRequest reports whether a limit equal to the request on every app
 // and sidecar container would make the pod Guaranteed: every container then has
 // CPU and memory limits equal to its requests. Requests never exceed limits, so
-// checking each container matches the apiserver's per-resource sums. Pod-level
-// resources set the QoS class themselves, and a container resize cannot move them.
+// checking each container matches the apiserver's per-resource sums. Non-empty
+// pod-level resources set the QoS class themselves, and a container resize cannot
+// move them.
 func guaranteedAtRequest(pod *corev1.Pod) bool {
-	if pod.Spec.Resources != nil {
+	if r := pod.Spec.Resources; r != nil && (len(r.Requests) > 0 || len(r.Limits) > 0) {
 		return false
 	}
 	pinned := func(c *corev1.Container) bool {

@@ -169,6 +169,11 @@ var _ = Describe("NodeReconciler and the QoS-immutable resize rule (§4.1)", fun
 					Limits:   corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("1"), corev1.ResourceMemory: resource.MustParse("128M")},
 				},
 			}, false),
+		Entry("empty pod-level resources leave the class to the containers",
+			corev1.PodSpec{
+				Containers: []corev1.Container{qosContainer(cApp, 100, 1000, 64, 64)},
+				Resources:  &corev1.ResourceRequirements{},
+			}, true),
 	)
 
 	It("shrinks memory-pinned and plain pods on a node with no slack, without churn", func() {
