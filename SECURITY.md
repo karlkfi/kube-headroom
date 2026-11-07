@@ -2,14 +2,17 @@
 
 ## Supported versions
 
-Headroom is pre-1.0, so security fixes land on `main` and ship in the next
-release of the latest minor line. Older lines get no fixes; upgrade instead.
+Headroom is in **early development** and has not yet cut a release — it is not
+yet deployable (see [`README.md`](README.md) and
+[the backlog](docs/queue/README.md)). Until the first tagged release, only the
+current `main` branch is supported and receives security fixes.
 
 | Version | Supported |
 |---|---|
-| `0.2.x` | ✅ |
-| `0.1.x` | ❌ |
-| `main` | ✅ |
+| `main` (unreleased) | ✅ |
+
+This table will be revised to enumerate supported release lines once the project
+starts tagging releases.
 
 ## Reporting a vulnerability
 
