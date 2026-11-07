@@ -28,6 +28,7 @@ import (
 
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
 	"github.com/karlkfi/kube-headroom/internal/controller"
+	"github.com/karlkfi/kube-headroom/internal/vpa"
 	webhookv1 "github.com/karlkfi/kube-headroom/internal/webhook/v1"
 	// +kubebuilder:scaffold:imports
 )
@@ -188,6 +189,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	vpas := vpa.NewPoller(mgr.GetAPIReader())
+	if err := mgr.Add(vpas); err != nil {
+		setupLog.Error(err, "Failed to add the VerticalPodAutoscaler poller")
+		os.Exit(1)
+	}
+
 	// The node reconciler owns the managed-pod accounting; the config reconciler
 	// reads it to populate HeadroomConfig status, so it is constructed first and
 	// handed in (Q26).
@@ -195,6 +202,7 @@ func main() {
 		Client:   mgr.GetClient(),
 		Scheme:   mgr.GetScheme(),
 		Recorder: mgr.GetEventRecorder("headroom-node-controller"),
+		VPAs:     vpas,
 	}
 	if err := nodeReconciler.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "node")
@@ -210,7 +218,7 @@ func main() {
 	}
 	// nolint:goconst
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
-		if err := webhookv1.SetupPodWebhookWithManager(mgr); err != nil {
+		if err := webhookv1.SetupPodWebhookWithManager(mgr, vpas); err != nil {
 			setupLog.Error(err, "Failed to create webhook", "webhook", "Pod")
 			os.Exit(1)
 		}

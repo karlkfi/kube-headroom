@@ -26,6 +26,7 @@ const (
 	reasonResizeInfeasible = "ResizeInfeasible"       // kubelet refused the resize (result=infeasible)
 	reasonResizeForbidden  = "ResizeForbidden"        // quota or other 403 (result=quota-denied/forbidden)
 	reasonResizeLimitRange = "ResizeLimitRangeDenied" // LimitRange 403 (result=limitrange-denied)
+	reasonVPAManagesLimit  = "VPAManagesLimit"        // a VPA can write the pod's CPU limit, so it is unmanaged (§6.3)
 
 	// actionResize is the events/v1 "action" (the machine-readable operation) for
 	// every Headroom event: they all concern the in-place CPU-limit resize.

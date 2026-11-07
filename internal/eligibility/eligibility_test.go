@@ -247,14 +247,14 @@ func TestOwnerExcluded(t *testing.T) {
 		},
 		{
 			name:     "kind + apiGroup match",
-			pod:      ownedBy("StatefulSet", "apps/v1", "db"),
-			excluded: []kubeheadroomv1alpha1.ExcludedOwner{{Kind: "StatefulSet", APIGroup: groupApps}},
+			pod:      ownedBy(kindStatefulSet, "apps/v1", "db"),
+			excluded: []kubeheadroomv1alpha1.ExcludedOwner{{Kind: kindStatefulSet, APIGroup: groupApps}},
 			want:     true,
 		},
 		{
 			name:     "name narrows the match",
-			pod:      ownedBy("StatefulSet", "apps/v1", "db"),
-			excluded: []kubeheadroomv1alpha1.ExcludedOwner{{Kind: "StatefulSet", Name: "other"}},
+			pod:      ownedBy(kindStatefulSet, "apps/v1", "db"),
+			excluded: []kubeheadroomv1alpha1.ExcludedOwner{{Kind: kindStatefulSet, Name: "other"}},
 			want:     false,
 		},
 		{

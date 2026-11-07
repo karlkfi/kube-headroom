@@ -31,10 +31,12 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
 	"github.com/karlkfi/kube-headroom/internal/eligibility"
 	"github.com/karlkfi/kube-headroom/internal/policy"
+	"github.com/karlkfi/kube-headroom/internal/vpa"
 )
 
 const (
@@ -76,6 +78,9 @@ type NodeReconciler struct {
 	DebouncePeriod time.Duration
 	// BackoffPeriod is the ineligibility window after a refused resize.
 	BackoffPeriod time.Duration
+	// VPAs lists the VerticalPodAutoscalers that can disqualify a pod (§6.3). A nil
+	// Poller sees none.
+	VPAs *vpa.Poller
 
 	// dynamicDebounce caches spec.debouncePeriod (nanoseconds) as of the last
 	// reconcile so the event handler — which runs outside Reconcile and has no
@@ -85,6 +90,10 @@ type NodeReconciler struct {
 	mu       sync.Mutex
 	limiters map[string]*rate.Limiter // node name -> per-node patch token bucket
 	backoff  sync.Map                 // pod key (ns/name) -> time.Time expiry
+
+	// vpaSkipped remembers which pods have had their VPAManagesLimit event, so a
+	// skipped pod warns once rather than on every reconcile. pod UID -> VPA name.
+	vpaSkipped sync.Map
 
 	// podSeries tracks, per node, the managed pods currently exporting a
 	// podLimitCores series, so a pod that leaves a node or becomes ineligible has
@@ -119,7 +128,7 @@ type podSeriesRef struct {
 	name      string
 }
 
-// The RBAC this reconciler needs (pods, pods/resize, nodes, namespaces, limitranges) is
+// The RBAC this reconciler needs (pods, pods/resize, nodes, namespaces, limitranges, VPAs) is
 // declared once on HeadroomConfigReconciler; see headroomconfig_controller.go.
 
 // Reconcile recomputes every managed pod's CPU limit for one node and applies
@@ -132,6 +141,12 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// clock (which tests freeze for backoff/timestamp determinism).
 	start := time.Now()
 	defer func() { reconcileDuration.Observe(time.Since(start).Seconds()) }()
+
+	// Before the first VPA list has finished, a pod under a limit-managing VPA looks
+	// like any other.
+	if !r.VPAs.Synced() {
+		return ctrl.Result{RequeueAfter: time.Second}, nil
+	}
 
 	cfg, err := r.loadConfig(ctx)
 	if err != nil {
@@ -296,6 +311,14 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 				}
 				nsManaged[pod.Namespace] = ok
 			}
+			if ok {
+				// Decided here so a pod Headroom would otherwise leave alone gets no
+				// warning. It leaves the distribution basis but still books slack, and
+				// keeps whatever limit it has (§6.3).
+				vpaName := eligibility.LimitManagingVPA(pod, rcs, r.VPAs.ForNamespace(pod.Namespace))
+				r.noteVPASkip(pod, vpaName)
+				ok = vpaName == ""
+			}
 			managed, holdsShare = ok && !backedOff, ok && backedOff
 		}
 
@@ -341,6 +364,21 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 		byKey[pod.Namespace+"/"+pod.Name] = pod
 	}
 	return inputs, byKey, nil
+}
+
+// noteVPASkip warns once per pod and VPA that a VPA keeps Headroom off the pod, and
+// forgets a pod it no longer applies to, so a later VPA warns afresh.
+func (r *NodeReconciler) noteVPASkip(pod *corev1.Pod, vpaName string) {
+	if vpaName == "" {
+		r.vpaSkipped.Delete(pod.UID)
+		return
+	}
+	if previous, seen := r.vpaSkipped.Swap(pod.UID, vpaName); seen && previous == vpaName {
+		return
+	}
+	r.recordEvent(pod, corev1.EventTypeWarning, reasonVPAManagesLimit, fmt.Sprintf(
+		"VerticalPodAutoscaler %s can write this pod's CPU limit, so Headroom will not manage the pod; "+
+			"set controlledValues: RequestsOnly on it to use both", vpaName))
 }
 
 // applyResize patches only limits.cpu of the pod's resizable containers via the
@@ -750,7 +788,7 @@ func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return fmt.Errorf("index pods by %s: %w", podNodeNameIndex, err)
 	}
 
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		Named("node").
 		Watches(&corev1.Pod{}, r.podEventHandler(),
 			builder.WithPredicates(predicate.Funcs{UpdateFunc: podUpdateRelevant})).
@@ -765,8 +803,14 @@ func (r *NodeReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// A LimitRange has no generation; this drops only the informer's resyncs.
 		Watches(&corev1.LimitRange{}, r.nodesEventHandler(func(ctx context.Context, o client.Object) []string {
 			return r.nodesHoldingPodsIn(ctx, o.GetNamespace())
-		}), builder.WithPredicates(predicate.ResourceVersionChangedPredicate{})).
-		Complete(r)
+		}), builder.WithPredicates(predicate.ResourceVersionChangedPredicate{}))
+	if r.VPAs != nil {
+		// A channel rather than a watch: VPA is an optional CRD (internal/vpa).
+		b = b.WatchesRawSource(source.Channel(r.VPAs.Changes(), r.nodesEventHandler(func(ctx context.Context, o client.Object) []string {
+			return r.nodesHoldingPodsIn(ctx, o.GetName())
+		})))
+	}
+	return b.Complete(r)
 }
 
 // nodesEventHandler enqueues the nodes a settings object affects, each with its
@@ -786,6 +830,9 @@ func (r *NodeReconciler) nodesEventHandler(nodes func(context.Context, client.Ob
 			enqueue(ctx, e.ObjectNew, q)
 		},
 		DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			enqueue(ctx, e.Object, q)
+		},
+		GenericFunc: func(ctx context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 			enqueue(ctx, e.Object, q)
 		},
 	}
@@ -840,6 +887,7 @@ func (r *NodeReconciler) podEventHandler() handler.EventHandler {
 			}
 		},
 		DeleteFunc: func(_ context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+			r.vpaSkipped.Delete(e.Object.GetUID())
 			enqueue(q, e.Object.(*corev1.Pod).Spec.NodeName)
 		},
 	}
