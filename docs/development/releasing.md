@@ -26,6 +26,8 @@ workflow preserves this; don't "fix" it.
    sources. Open the PR but **hold the merge until after the tag**: the site
    must never advertise a release that doesn't exist. The release URL is
    predictable (`…/releases/tag/vX.Y.Z`), so content can be final beforehand.
+   The same PR carries the curated release notes,
+   [`docs/releases/vX.Y.Z.md`](../releases/README.md).
 
 2. **Tag the tip of `main`** (all release PRs merged, CI green):
 
@@ -57,7 +59,14 @@ workflow preserves this; don't "fix" it.
    <https://github.com/users/karlkfi/packages> (three packages:
    `kube-headroom`, `charts/kube-headroom`, `charts/kube-headroom-crds`).
 
-5. **Merge the announcement PR.** The website deploys on merge to `main`;
+5. **Publish the notes.** The workflow creates the Release with generated notes,
+   so replace them, adding the digests to the file first:
+
+   ```sh
+   gh release edit vX.Y.Z --notes-file docs/releases/vX.Y.Z.md
+   ```
+
+6. **Merge the announcement PR.** The website deploys on merge to `main`;
    confirm the post and banner at <https://kube-headroom.dev>.
 
 ## Versioning notes
