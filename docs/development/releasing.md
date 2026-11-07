@@ -27,7 +27,7 @@ workflow preserves this; don't "fix" it.
    must never advertise a release that doesn't exist. The release URL is
    predictable (`…/releases/tag/vX.Y.Z`), so content can be final beforehand.
    The same PR carries the curated release notes,
-   [`docs/releases/vX.Y.Z.md`](../releases/README.md).
+   [`docs/releases/vX.Y.Z.md`](https://github.com/karlkfi/kube-headroom/blob/main/docs/releases/README.md).
 
 2. **Cut a release candidate first, every time.** Tag the tip of `main` (all
    release PRs merged, CI green), then upgrade from the previous release to the

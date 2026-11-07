@@ -11,8 +11,8 @@ have the full list, the upgrade steps and what was tested.
 ## What changes for you
 
 - **Limits now follow your settings on quiet nodes.** In v0.1.0, flipping
-  `dryRun`, enrolling a namespace, setting `max-cpu` or adding a LimitRange did
-  nothing until another pod landed on the node. Now each of those takes effect
+  `dryRun`, enrolling a namespace or setting `max-cpu` did nothing until another
+  pod landed on the node. Now each of those, and a LimitRange change, takes effect
   within seconds. This is a behaviour change: a config edit can resize every
   managed pod in the cluster, bounded only by the existing rate limits.
 - **Events reach the API server.** v0.1.0's role granted the wrong API group, so
@@ -27,6 +27,9 @@ have the full list, the upgrade steps and what was tested.
   `quota-denied`, so check any alert on that label.
 - **Slack matches what the scheduler books.** Pod overhead and init-container
   peaks now count, so limits drop on nodes running those pods.
+- **Pods under a VPA that writes CPU limits are left alone.** A default-mode VPA
+  and Headroom used to overwrite the same limit. Switch the VPA to `RequestsOnly`
+  to use both.
 - **`webhook.enable=false` works.** It used to leave the controller
   crash-looping.
 
