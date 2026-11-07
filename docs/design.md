@@ -18,7 +18,7 @@ matrix](applicability.md).
 
 ## 1. Summary
 
-Headroom is a Kubernetes controller that dynamically sets container CPU **limits** as a function of how oversubscribed a node is, recomputed whenever a pod is scheduled onto or removed from the node. On an empty node, a pod's limit approaches the node's allocatable CPU (no pointless throttling). As the node fills with requests, limits converge toward each pod's request (predictable fair sharing). The limit is computed from **requests** (booked capacity), not live usage, so it changes only on scheduling events — deterministic, low-churn, and debuggable.
+Headroom is a Kubernetes controller that dynamically sets container CPU **limits** as a function of how oversubscribed a node is, recomputed whenever a pod is scheduled onto or removed from the node, or a setting that decides its limits changes. On an empty node, a pod's limit approaches the node's allocatable CPU (no pointless throttling). As the node fills with requests, limits converge toward each pod's request (predictable fair sharing). The limit is computed from **requests** (booked capacity), not live usage, so it changes only on scheduling events and changes to Headroom's settings — deterministic, low-churn, and debuggable.
 
 Core formula (proportional policy):
 
@@ -64,7 +64,7 @@ The scheme should make honest, adequate requests the dominant strategy:
 
 - Eliminate throttling attributable to unused node capacity: if CPU is unbooked, someone can burst into it.
 - Provide predictable, request-proportional fair sharing on contended nodes for multi-tenant clusters.
-- Recompute limits on scheduling events (pod add/remove/resize on a node), not on usage fluctuations.
+- Recompute limits on scheduling events (pod add/remove/resize on a node) and on changes to the settings that decide them, not on usage fluctuations.
 - Keep the pod spec truthful: `kubectl get pod` must show the actual enforced limit. No hidden node-agent cgroup state.
 - First-class debuggability: every limit change is explainable from observable inputs (annotation + event + metrics).
 - Low API-server overhead via hysteresis, debouncing, and rate limiting.
@@ -191,13 +191,13 @@ below are the last word on that floor.
 
 - `allocatable_cpu`: from node status (already excludes system-reserved/kube-reserved).
 - `Σ requests` (for slack): **all** non-terminal pods bound to the node — managed, unmanaged, Guaranteed, DaemonSets, kube-system — each at what the scheduler books for it: pod overhead plus the pod-level request where set, otherwise plus the larger of its running containers and its init peak, following any resize in flight. Slack is what the scheduler could still place, so a node it treats as full has none, even after a large init container has exited.
-- `M` (for distribution): managed pods only. Unmanaged pods keep whatever limits they declared; their requests reduce `S` but they receive no share of it.
+- `M` (for distribution): managed pods only, including one in backoff (§6.4). Unmanaged pods keep whatever limits they declared; their requests reduce `S` but they receive no share of it.
 - Pod-level: sum container requests (including sidecars per their effective-request rules); apply the pod's aggregate burst to containers pro-rata by their CPU requests. Containers with zero CPU request in a managed pod receive no computed burst (their limit, if any, is left untouched).
 - If `S ≤ 0` (node request-overcommitted — possible with unmanaged pressure): all managed limits = requests, apart from the QoS floor in §5.3. Degenerates to pure `cpu.weight` sharing, which is the correct behavior.
 
 ### 5.5 Requests-driven, not usage-driven (explicit trade-off)
 
-Because limits derive from requests, they change only when the node's booking changes. Pros: deterministic (auditable from `kubectl get pods -o wide` on the node at any timestamp), low churn, no metric-pipeline dependency, no feedback oscillation. Con: if a pod *requests* 8 cores and *uses* 0.1, those 7.9 cores don't raise anyone's *ceiling* — but they are still fully usable in practice, because CFS is work-conserving under each pod's ceiling and ceilings already include all unbooked capacity. The only lost opportunity is a pod that wants to burst *beyond* its Headroom ceiling into requested-idle capacity; that pod's remedy is to raise its request, which is the incentive working as intended. A usage-informed mode (e.g., PSI-gated ceiling relaxation) is deliberately deferred (Section 11).
+Because limits derive from requests, they change only when the node's booking or an operator's or tenant's setting changes (§6.2). Pros: deterministic (auditable from `kubectl get pods -o wide` on the node at any timestamp), low churn, no metric-pipeline dependency, no feedback oscillation. Con: if a pod *requests* 8 cores and *uses* 0.1, those 7.9 cores don't raise anyone's *ceiling* — but they are still fully usable in practice, because CFS is work-conserving under each pod's ceiling and ceilings already include all unbooked capacity. The only lost opportunity is a pod that wants to burst *beyond* its Headroom ceiling into requested-idle capacity; that pod's remedy is to raise its request, which is the incentive working as intended. A usage-informed mode (e.g., PSI-gated ceiling relaxation) is deliberately deferred (Section 11).
 
 ---
 
@@ -211,14 +211,16 @@ Because limits derive from requests, they change only when the node's booking ch
 
 The unit of reconciliation is the **node**, not the pod — every scheduling event on a node invalidates every managed limit on that node, so per-pod reconcile would thrash.
 
-1. Pod informer, indexed by `spec.nodeName`. Events that enqueue a node key: pod bound (nodeName set), pod deleted / entered terminal phase, pod CPU requests changed (resize by someone else, e.g., VPA on unmanaged pods).
-2. Node informer: allocatable changes, cordon+drain don't matter (pods leaving already fire), node deletion cleans queue state.
+1. Pod informer, indexed by `spec.nodeName`. Events that enqueue a node key: pod bound (nodeName set), pod deleted / entered terminal phase, pod CPU requests changed (resize by someone else, e.g., VPA on unmanaged pods), a `Deferred` or `Infeasible` resize starting or ending, and a change to what §6.3 reads off the pod: the `kube-headroom.dev/mode` opt-out label, the `kube-headroom.dev/max-cpu` annotation, or its owner references. The `kube-headroom.dev/status` annotation is deliberately not among them, so the controller's own writes never enqueue it.
+2. Node informer: allocatable or label changes (`excludedNodeSelector` reads labels), cordon+drain don't matter (pods leaving already fire), node deletion cleans queue state.
 3. **Debounce:** node keys are dequeued no more often than `debouncePeriod` (default 2s), so a burst of scheduling (deployment rollout landing 10 pods on a node) computes once.
 4. Reconcile(node):
    a. List cached pods on node; compute `S`, `M`, `F`, and per-pod target limits (pure function, Section 9).
    b. **Hysteresis:** for each managed pod, skip if `|target − current| / current < deadband` (default 10%) — with one exception: a *shrink* that would bring an above-entitlement limit down toward request on a node where `S` decreased is applied at a tighter deadband (default 5%), because stale-generous limits are a fairness bug while stale-stingy limits are only an efficiency bug.
    c. Issue resize patches (server-side apply on the `resize` subresource, dedicated fieldManager `headroom`) through a per-node token bucket (default 10 patches/s) and a global client QPS budget.
    d. Record annotation + event per changed pod (Section 8.1).
+5. **Settings** fan out to every node they can affect, each key debounced and jittered as in step 3: a `HeadroomConfig` spec change enqueues all nodes, filtered on `metadata.generation` so the controller's status writes never do. A Namespace label change or any LimitRange change enqueues only the nodes holding a pod in that namespace.
+6. **Backoff expiry:** a reconcile that leaves a pod in backoff (§6.4) requeues the node for when the first such window ends, plus a jittered debounce, so a refused pod is retried on a node with no other events. The retry moves no neighbor's target (§6.4).
 
 ### 6.3 Pod eligibility
 
@@ -267,7 +269,7 @@ rejects such pods at CREATE ([runbook](runbook.md#require-cpu-requests)).
 
 ### 6.4 Resize outcome handling
 
-- **`Infeasible`:** should be near-impossible since targets are capped at allocatable, but if it occurs (e.g., manager-policy node slipped through eligibility): mark pod ineligible for `backoffPeriod`, emit warning event, increment `headroom_resizes_total{result="infeasible"}`.
+- **`Infeasible`:** should be near-impossible since targets are capped at allocatable, but if it occurs (e.g., manager-policy node slipped through eligibility): mark pod ineligible for `backoffPeriod`, emit warning event, increment `headroom_resizes_total{result="infeasible"}`. During a window a refused pod of any kind gets no target but stays in `M` and `N`, so its neighbors' targets do not depend on which windows are open; pods refused at different times would otherwise swing a neighbor's limit at every retry. A long refusal therefore holds a share nobody uses, and `headroom_node_managed_pods` leaves it out.
 - **`Deferred`:** kubelet retries on its own; controller does nothing but track a gauge (`headroom_node_resizes_deferred{node}`, the managed pods on a node with a `Deferred` `PodResizePending` condition). A deferred *limit-only increase* should be rare (no allocation change), so a sustained deferred count is an alerting signal.
 - **Quota `403 Forbidden`:** a `limits.cpu` ResourceQuota in the namespace makes an over-budget raise fail **admission** with a 403 — a distinct signal from kubelet `Infeasible` (Phase 0 spike Q2c, [`plan/archive/phase0-resize-spike.md`](plan/archive/phase0-resize-spike.md); quota is delta-accounted on resize). Treat it like `Infeasible`: mark the pod ineligible for `backoffPeriod`, emit a warning event, increment `headroom_resizes_total{result="quota-denied"}`. The durable fix is operational: managed namespaces must quota on `requests.cpu` only (§8.3, preflight).
 - **LimitRange `403 Forbidden`:** the clamp (§5.3) keeps a target inside what a LimitRange admits, so this refusal means no target could have been, as with a LimitRange that postdates the pod and whose `max` sits below the pod's request or the limit of a container Headroom leaves alone, or that the controller's cache had not yet seen the LimitRange. The exception is a fractional per-container ratio over a very small request: the clamp (§8.3) can leave a memory-pinned pod whose limit predates the LimitRange no room above its request, so its QoS floor is refused on every attempt although a slightly higher limit would be admitted (100m + 10m at 1.05 is refused at 120m, and 115m would pass). Handled like quota, but with its own event reason (`ResizeLimitRangeDenied`) and `headroom_resizes_total{result="limitrange-denied"}`, so the operator is sent to the right object. A 403 names its admission plugin only in its message, so this reads the wording of the LimitRanger and ResourceQuota plugins.
@@ -293,7 +295,8 @@ It also removes the "must pre-declare a CPU limit" eligibility requirement, guar
 
 1. *Single-factor property of the proportional policy:* all managed pods on a node share one factor `F`; hysteresis on limits is (nearly) hysteresis on `F`, so the common case is "F moved 3%, nothing to do" — zero patches. With a 10% deadband, a node needs ~10% booking change to trigger a wave. Steady-state clusters see very few patches.
 2. *Debounce* collapses rollout bursts into one computation.
-3. *Rate limiting* bounds worst-case API pressure: `10 patches/s/node`, global client QPS default 50 (tunable). A 5,000-node cluster with heavy churn is bounded by the global budget; staleness during bursts degrades gracefully (Section 8.6 failure analysis — stale limits are safe).
+3. *Rate limiting* bounds worst-case API pressure: `10 patches/s/node`, client QPS default 50 (tunable, and per resource type rather than global: Q71). A 5,000-node cluster with heavy churn is bounded by those client budgets; staleness during bursts degrades gracefully (Section 8.6 failure analysis — stale limits are safe).
+4. *Settings fan out through the same bounds.* A `HeadroomConfig` spec change is the widest trigger (§6.2 step 5): every node reconciles once, splayed by the debounce jitter and worked one at a time, with each node's patches through its token bucket and every write through its client budget. So flipping `dryRun` to false drains at the configured rates rather than resizing every pod at once, and takes `P / patchesPerSecond` seconds on a node of `P` pods. The status annotation is metadata rather than a resize, so it passes only the client budget. A config edit that moves no target costs one cached recompute per node and no writes.
 
 **Kubelet cost:** a CPU-only, `NotRequired` resize is a CRI `UpdateContainerResources` → one cgroup write. Cheap; PLEG improvements since 1.33 made resize acknowledgment fast.
 
@@ -329,7 +332,7 @@ Design rule: **any observed throttling must be explainable in two kubectl comman
 - **Google GKE Multidimensional Pod Autoscaler (MPA, beta):** compatible by construction — MPA scales horizontally on CPU utilization and vertically on *memory requests* (`containerControlledResources: [memory]`); zero field overlap with `limits.cpu`. The HPA-signal note above applies to MPA's horizontal-CPU dimension identically.
 - **Commercial rightsizers (ScaleOps, Cast AI, StormForge, PerfectScale, etc.):** same rule as VPA — compatible when they manage requests, conflicting when they set or strip limits in managed namespaces. Per-namespace opt-in gives clean territory division. Node-agent-based tools that write cgroups directly (Koordinator, Crane) must not run on Headroom-managed nodes.
 - **ResourceQuota:** `limits.cpu` quotas in managed namespaces make Headroom's raises consume tenant quota, and an over-budget raise **fails admission with a 403** (not `Infeasible`) — verified in the Phase 0 spike (Q2c: quota is delta-accounted on resize; a within-quota raise succeeds and updates `used.limits.cpu`, an over-quota raise is rejected). **Hard requirement:** managed namespaces must quota on `requests.cpu` only, never `limits.cpu`. Ship this as a preflight check and a documented constraint (see [runbook](runbook.md#preflight)); the controller treats the 403 as a back-off signal (§6.4).
-- **LimitRange:** a CPU `max` or `maxLimitRequestRatio` in a namespace caps what Headroom can set, per container or per pod. The clamp step (§5.3) reads each one as a pod total: the pod target splits pro-rata by request, so a per-container `max` binds through the container with the largest request, and a fractional per-container ratio stops short of ratio × total, because a container's share can round up. That is usually a few millicores, but a very small request holds the whole pod near its request: 1000m + 10m at 1.05 gets no burst, though 1060m would be admitted. A whole-number ratio is exact. A LimitRange is read when its node next reconciles; a change to one does not itself trigger a reconcile.
+- **LimitRange:** a CPU `max` or `maxLimitRequestRatio` in a namespace caps what Headroom can set, per container or per pod. The clamp step (§5.3) reads each one as a pod total: the pod target splits pro-rata by request, so a per-container `max` binds through the container with the largest request, and a fractional per-container ratio stops short of ratio × total, because a container's share can round up. That is usually a few millicores, but a very small request holds the whole pod near its request: 1000m + 10m at 1.05 gets no burst, though 1060m would be admitted. A whole-number ratio is exact. A per-container `max` is more than a cap when it has no `default`: the apiserver stores it as `default` and `defaultRequest` too (measured on 1.35: `max: 2` came back with both at 2; a per-pod `max` stores neither, on 1.37), so that namespace carries the [side effects of a CPU default](runbook.md#limitrange-default). A change to a LimitRange reconciles the nodes holding pods in its namespace (§6.2).
 - **Cluster autoscaler / Karpenter:** operate on requests; unaffected. Scale-down consolidation that drains a node fires normal pod-delete events; fine.
 - **Scheduler:** limits are ignored by scheduling; because Headroom never touches requests, the documented scheduler behavior around pending resizes (max of desired/allocated/actual *requests*) is not triggered.
 
@@ -444,7 +447,7 @@ Spec fields: `policy: Proportional` (enum for future), `minBurstFloor`, `maxMult
 
 **Phase 1 — MVP:** policy core + node reconciler + mutating webhook (`failurePolicy: Ignore`, §6.5 — required for short-lived-pod coverage) + dry-run mode + metrics + annotations/events + docs (including the applicability matrix §8.4 and the "when not to use this" note §8.5). Exit criteria: on a test cluster, a pod on an empty node runs unthrottled at ~node capacity; scheduling neighbors shrinks its limit within 5s; a 20-second Job in a managed namespace gets a boosted limit at admission; controller kill mid-operation leaves cluster safe; zero patches at steady state.
 
-**Phase 2 — adoption hardening:** LimitRange awareness; VPA-exclusion check; Grafana dashboard; `kubectl` plugin; per-pod `kube-headroom.dev/max-cpu`.
+**Phase 2 — adoption hardening:** VPA-exclusion check; `kubectl` plugin.
 
 **Phase 3 — optional/experimental:** `cpu.max.burst` node agent (spec-consistent burst banking only); per-tenant slack weighting; usage/PSI-informed policy mode; pod-level resources support as that API matures.
 

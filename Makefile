@@ -172,7 +172,7 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 # installs it in BeforeSuite unless CERT_MANAGER_INSTALL_SKIP=true.
 test-e2e: setup-test-e2e manifests generate fmt vet ## Run the e2e tests. Expected an isolated environment using Kind.
 	KIND=$(KIND) KIND_CLUSTER=$(KIND_CLUSTER) \
-		go test -tags=e2e ./test/e2e/ -v -ginkgo.v
+		go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout 20m
 	$(MAKE) cleanup-test-e2e
 
 .PHONY: cleanup-test-e2e

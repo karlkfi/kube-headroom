@@ -145,7 +145,7 @@ func (r *HeadroomConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(headroomConfigRequests),
 			builder.WithPredicates(predicate.Funcs{UpdateFunc: podUpdateRelevant})).
 		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(headroomConfigRequests),
-			builder.WithPredicates(predicate.Funcs{UpdateFunc: nodeAllocatableChanged})).
+			builder.WithPredicates(predicate.Funcs{UpdateFunc: nodeUpdateRelevant})).
 		Named("headroomconfig").
 		Complete(r)
 }

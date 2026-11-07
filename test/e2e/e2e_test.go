@@ -329,6 +329,7 @@ var _ = Describe("Manager", Ordered, func() {
 	// headroomSpecs runs last because its last spec takes the controller down.
 	admissionPolicySpecs()
 	limitRangeSpecs()
+	quietNodeSpecs()
 	headroomSpecs()
 })
 

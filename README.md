@@ -10,7 +10,8 @@ On an empty node a pod's CPU limit approaches the node's allocatable CPU (no
 pointless throttling). As the node fills with requests, limits converge toward
 each pod's request (predictable, request-proportional fair sharing). The limit
 is derived from **requests** (booked capacity), not live usage, so it changes
-only on scheduling events — deterministic, low-churn, and debuggable.
+only on scheduling events and changes to Headroom's settings — deterministic,
+low-churn, and debuggable.
 
 > **Status: v0.1.0 released** — installable via the Helm charts (see the
 > [operator runbook](docs/runbook.md)); the API is `v1alpha1` and defaults to
