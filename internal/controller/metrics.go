@@ -60,8 +60,8 @@ var (
 		Help:      "Node CPU slack in cores (allocatable minus what the scheduler books for all pods), floored at 0.",
 	}, []string{nodeLabel})
 
-	// nodeManagedPods is the count of Headroom-managed pods on the node (N in the
-	// policy), the distribution denominator surfaced for correlation.
+	// nodeManagedPods is the count of pods Headroom set a target for on the node:
+	// N in the policy, less any holding a share from backoff.
 	nodeManagedPods = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: metricNamespace,
 		Name:      "node_managed_pods",

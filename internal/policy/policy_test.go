@@ -21,6 +21,32 @@ func targetsByKey(ds []Decision) map[string]int64 {
 	return m
 }
 
+// A pod in backoff stays in M and N, so its neighbors' targets do not depend on
+// which windows are open (§6.4). 5500m is where N shows: the floor is S/N.
+func TestHoldsShare_NeighborsKeepTheirTargetsAndItGetsNoDecision(t *testing.T) {
+	for _, allocatable := range []int64{18000, 5500} {
+		cfg := DefaultConfig()
+		all := []PodInput{mp("c", 1000, 0), mp("a", 1000, 0), mp("b", 3000, 0)}
+		wantStats, want := Compute(allocatable, all, cfg)
+
+		held := []PodInput{mp("c", 1000, 0), {Key: "a", RequestMilli: 1000, HoldsShare: true}, mp("b", 3000, 0)}
+		stats, ds := Compute(allocatable, held, cfg)
+
+		if stats != wantStats {
+			t.Errorf("allocatable %d: stats = %+v, want %+v", allocatable, stats, wantStats)
+		}
+		got, wantTargets := targetsByKey(ds), targetsByKey(want)
+		if _, ok := got["a"]; ok {
+			t.Errorf("allocatable %d: the held pod got a decision", allocatable)
+		}
+		for _, key := range []string{"b", "c"} {
+			if got[key] != wantTargets[key] {
+				t.Errorf("allocatable %d: %s = %d, want %d", allocatable, key, got[key], wantTargets[key])
+			}
+		}
+	}
+}
+
 // §5.1 worked example: 16-core node, three managed pods (0.5, 1.5, 6.0),
 // M = S = 8 cores → factor 2.0. With the floor disabled this reproduces the
 // pure proportional column of the design doc's table exactly.

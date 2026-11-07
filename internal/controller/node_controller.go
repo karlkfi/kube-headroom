@@ -163,6 +163,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, fmt.Errorf("list pods on node %s: %w", req.Name, err)
 	}
 
+	judgedAt := r.clock() // before any pod's backoff verdict, so a window ending mid-pass still requeues
 	inputs, byKey, err := r.buildInputs(ctx, cfg, podList.Items, nodeManaged)
 	if err != nil {
 		return ctrl.Result{}, err
@@ -177,7 +178,7 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// so slack/factor are observable everywhere (§8.1).
 	nodeFactor.WithLabelValues(req.Name).Set(stats.Factor)
 	nodeSlackCores.WithLabelValues(req.Name).Set(float64(stats.SlackMilli) / 1000.0)
-	nodeManagedPods.WithLabelValues(req.Name).Set(float64(stats.ManagedPods))
+	nodeManagedPods.WithLabelValues(req.Name).Set(float64(len(decisions)))
 	nodeResizesDeferred.WithLabelValues(req.Name).Set(float64(countDeferred(inputs, byKey)))
 
 	// Per-pod target-limit gauges — the §8.1 money-graph series. Set for every
@@ -257,13 +258,15 @@ func (r *NodeReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	if rateLimited {
 		return ctrl.Result{RequeueAfter: time.Second}, nil
 	}
-	return ctrl.Result{RequeueAfter: r.backoffRequeue(byKey)}, nil
+	return ctrl.Result{RequeueAfter: r.backoffRequeue(byKey, judgedAt)}, nil
 }
 
 // buildInputs turns the pods on a node into policy inputs. Every non-terminal
 // pod contributes to slack (§5.4); only eligible, namespace-enrolled, non-backed
-// -off pods are marked Managed and thus receive a limit. It returns the inputs
-// and a key→pod map so decisions can be applied without re-fetching.
+// -off pods are marked Managed and thus receive a limit. A backed-off pod holds
+// its share instead, so its neighbors' targets do not depend on which windows are
+// open (§6.4). It returns the inputs and a key→pod map so decisions can be applied
+// without re-fetching.
 func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, pods []corev1.Pod, nodeManaged bool) ([]policy.PodInput, map[string]*corev1.Pod, error) {
 	nsManaged := map[string]bool{}
 	nsLimitRanges := map[string][]corev1.LimitRange{}
@@ -277,8 +280,9 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 		}
 		rcs := eligibility.ResizableContainers(pod)
 
-		managed := false
-		if nodeManaged && eligibility.Eligible(pod, rcs) && !eligibility.OwnerExcluded(pod, cfg.spec.ExcludedOwners) && !r.inBackoff(pod) {
+		managed, holdsShare := false, false
+		if nodeManaged && eligibility.Eligible(pod, rcs) && !eligibility.OwnerExcluded(pod, cfg.spec.ExcludedOwners) {
+			backedOff := r.inBackoff(pod)
 			ok, cached := nsManaged[pod.Namespace]
 			if !cached {
 				var ns corev1.Namespace
@@ -292,7 +296,7 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 				}
 				nsManaged[pod.Namespace] = ok
 			}
-			managed = ok
+			managed, holdsShare = ok && !backedOff, ok && backedOff
 		}
 
 		// A managed pod whose kubelet already refused the last resize should back
@@ -302,7 +306,7 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 		// after a restart/rollout/leader-failover that lost the in-memory map
 		// (Q37): on the pod's first reconcile post-startup it re-enters backoff
 		// from its observable status instead of being retried immediately.
-		// Excluding it from this pass (managed = false, contributes slack only)
+		// Excluding it from this pass (managed = false, holding its share)
 		// means no duplicate failing patch — and no spurious CPULimitAdjusted event
 		// or result=applied count — is issued before the window takes hold. The
 		// branch is reached only when the pod is not already backed off, so the
@@ -316,10 +320,11 @@ func (r *NodeReconciler) buildInputs(ctx context.Context, cfg *resolvedConfig, p
 			r.recordEvent(pod, corev1.EventTypeWarning, reasonResizeInfeasible,
 				fmt.Sprintf("kubelet reports the CPU-limit resize is infeasible; backing off %s", r.backoffPeriod()))
 			r.setBackoff(pod)
-			managed = false
+			managed, holdsShare = false, true
 		}
 
 		input := buildPodInput(pod, rcs, managed)
+		input.HoldsShare = holdsShare
 		if managed {
 			lrs, cached := nsLimitRanges[pod.Namespace]
 			if !cached {
@@ -600,8 +605,7 @@ func (r *NodeReconciler) setBackoffKey(key string) {
 // debounce, or 0 when none is running: nothing else reconciles a quiet node when
 // the window closes (§6.2 step 6). A pod that stopped being eligible mid-window
 // costs one extra reconcile.
-func (r *NodeReconciler) backoffRequeue(pods map[string]*corev1.Pod) time.Duration {
-	now := r.clock()
+func (r *NodeReconciler) backoffRequeue(pods map[string]*corev1.Pod, now time.Time) time.Duration {
 	var next time.Time
 	for key := range pods {
 		v, ok := r.backoff.Load(key)

@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -160,6 +161,65 @@ var _ = Describe("Node reconcile triggers outside scheduling (§6.2)", func() {
 			res, err := r.Reconcile(ctx, reconcile.Request{Name: errNodeName})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(res.IsZero()).To(BeTrue())
+		})
+
+		It("requeues for a window that ends while the reconcile is running", func() {
+			r, _ := newResizeErrReconciler("settled", nil)
+			pinTime(r)
+			start := r.clock()
+			r.backoff.Store(nsA+"/settled", start.Add(time.Second))
+			// The namespace read follows the pod's backoff verdict.
+			r.Client = interceptor.NewClient(r.Client.(client.WithWatch), interceptor.Funcs{
+				Get: func(ctx context.Context, c client.WithWatch, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+					if _, ok := obj.(*corev1.Namespace); ok {
+						r.now = func() time.Time { return start.Add(time.Minute) }
+					}
+					return c.Get(ctx, key, obj, opts...)
+				},
+			})
+
+			res, err := r.Reconcile(ctx, reconcile.Request{Name: errNodeName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(res.RequeueAfter).To(Equal(time.Second + defaultDebouncePeriod))
+		})
+
+		DescribeTable("which pods hold a share rather than get a target",
+			func(prepare func(*NodeReconciler, *corev1.Pod), wantManaged, wantHolds bool) {
+				r, _ := newResizeErrReconciler("settled", nil)
+				pinTime(r)
+				pod := resizeErrPod("p")
+				prepare(r, pod)
+				cfg, err := r.loadConfig(ctx)
+				Expect(err).NotTo(HaveOccurred())
+
+				inputs, _, err := r.buildInputs(ctx, cfg, []corev1.Pod{*pod}, true)
+				Expect(err).NotTo(HaveOccurred())
+				Expect(inputs[0].Managed).To(Equal(wantManaged))
+				Expect(inputs[0].HoldsShare).To(Equal(wantHolds))
+			},
+			Entry("no refusal", func(*NodeReconciler, *corev1.Pod) {}, true, false),
+			Entry("in backoff", func(r *NodeReconciler, p *corev1.Pod) { r.setBackoff(p) }, false, true),
+			Entry("newly Infeasible", func(_ *NodeReconciler, p *corev1.Pod) {
+				p.Status.Conditions = []corev1.PodCondition{{
+					Type: corev1.PodResizePending, Status: corev1.ConditionTrue, Reason: corev1.PodReasonInfeasible,
+				}}
+			}, false, true),
+			Entry("in backoff in a namespace that is not enrolled", func(r *NodeReconciler, p *corev1.Pod) {
+				p.Namespace = "not-enrolled"
+				r.setBackoff(p)
+			}, false, false),
+		)
+
+		It("leaves a pod holding a share out of node_managed_pods", func() {
+			r, _ := newResizeErrReconciler("settled", nil)
+			pinTime(r)
+			held := resizeErrPod("held")
+			Expect(r.Create(ctx, held)).To(Succeed())
+			r.setBackoff(held)
+
+			_, err := r.Reconcile(ctx, reconcile.Request{Name: errNodeName})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(testutil.ToFloat64(nodeManagedPods.WithLabelValues(errNodeName))).To(Equal(1.0))
 		})
 
 		It("leaves the sooner rate-limit requeue in charge", func() {
@@ -463,6 +523,55 @@ var _ = Describe("Node reconcile triggers outside scheduling (§6.2)", func() {
 			Expect(time.Since(start)).To(BeNumerically(">=", time.Second), "a retry must wait out the 2s window")
 
 			Expect(k8sClient.Delete(ctx, &corev1.Pod{Name: refusedPod, Namespace: refusedNS}, client.GracePeriodSeconds(0))).To(Succeed())
+		})
+
+		// Each window's end reconciles with a different pod in backoff. 18 CPUs keeps
+		// the burst floor from hiding the difference: 3600m with both in the basis,
+		// 4250m or 7500m with one out.
+		It("holds a neighbor's limit still while two pods refused out of step keep retrying", func() {
+			awaitQuiet()
+			applyConfigWith(false, func(spec *kubeheadroomv1alpha1.HeadroomConfigSpec) {
+				spec.DebouncePeriod = metav1.Duration{Duration: 100 * time.Millisecond}
+			})
+			awaitQuiet()
+
+			node := nextNode()
+			makeNode(node, 18)
+			refusals := []struct {
+				ns, name string
+				req      int64
+			}{{"trigger-refused-a", "a", 1000}, {"trigger-refused-b", "b", 3000}}
+			for _, p := range refusals {
+				Expect(k8sClient.Create(ctx, enrolledNamespace(p.ns))).To(Succeed())
+				makeBurstablePod(p.ns, p.name, node, p.req, 0)
+			}
+			makeBurstablePod(managedNS, "neighbor", node, 1000, 0)
+			awaitLimit(managedNS, "neighbor", 3600)
+			awaitLimit(refusals[1].ns, refusals[1].name, 10800)
+
+			for _, p := range refusals {
+				before := denied()
+				Expect(k8sClient.Create(ctx, &corev1.LimitRange{
+					Name: "cap", Namespace: p.ns,
+					Spec: corev1.LimitRangeSpec{Limits: []corev1.LimitRangeItem{{
+						Type: corev1.LimitTypeContainer,
+						Max:  corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("50m")},
+					}}},
+				})).To(Succeed())
+				Eventually(denied).WithTimeout(15 * time.Second).WithPolling(20 * time.Millisecond).Should(BeNumerically(">", before))
+				time.Sleep(time.Second) // half the 2s window, so the two stay out of step
+			}
+
+			patches, retries := applied(), denied()
+			Consistently(func() int64 { return podLimitMilli(managedNS, "neighbor") }).
+				WithTimeout(7 * time.Second).WithPolling(50 * time.Millisecond).Should(Equal(int64(3600)))
+			Expect(applied()).To(Equal(patches))
+			Expect(denied()-retries).To(BeNumerically(">=", 3), "both pods must have kept retrying")
+
+			for _, p := range refusals {
+				Expect(k8sClient.Delete(ctx, &corev1.Pod{Name: p.name, Namespace: p.ns}, client.GracePeriodSeconds(0))).To(Succeed())
+			}
+			Expect(k8sClient.Delete(ctx, &corev1.Pod{Name: "neighbor", Namespace: managedNS}, client.GracePeriodSeconds(0))).To(Succeed())
 		})
 
 		It("reconciles every node when the config is deleted, since dry-run is then the default", func() {
