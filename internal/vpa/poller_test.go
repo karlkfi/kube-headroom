@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-logr/logr/funcr"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -211,6 +212,36 @@ func TestRefreshReadsEveryPageABoundedSizeAtATime(t *testing.T) {
 	}
 	if want := []int64{pageSize, pageSize, pageSize}; !slices.Equal(r.limits, want) {
 		t.Errorf("list limits = %v, want %v", r.limits, want)
+	}
+}
+
+// deadlineReader records each page's deadline, then lets the clock move.
+type deadlineReader struct {
+	pagedReader
+	deadlines []time.Time
+}
+
+func (r *deadlineReader) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	deadline, ok := ctx.Deadline()
+	if !ok {
+		return errors.New("a page was listed with no deadline")
+	}
+	r.deadlines = append(r.deadlines, deadline)
+	time.Sleep(time.Millisecond)
+	return r.pagedReader.List(ctx, list, opts...)
+}
+
+func TestRefreshGivesEachPageItsOwnTimeout(t *testing.T) {
+	r := &deadlineReader{pages: threePages()}
+	NewPoller(r).Refresh(context.Background())
+
+	if len(r.deadlines) != 3 {
+		t.Fatalf("listed %d pages, want 3", len(r.deadlines))
+	}
+	for i := 1; i < len(r.deadlines); i++ {
+		if !r.deadlines[i].After(r.deadlines[i-1]) {
+			t.Errorf("page %d shares a deadline with the page before it, so a long list could fail on length alone", i)
+		}
 	}
 }
 
