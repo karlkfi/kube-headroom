@@ -163,7 +163,7 @@
     {"@type": "Question", "name": "Can I cap my own ceiling?", "acceptedAnswer": {"@type": "Answer", "text": "Yes — annotate the pod with kube-headroom.dev/max-cpu: \"4\" and Headroom will never raise that pod's limit above 4 cores, as long as 4 cores is above its CPU request."}},
     {"@type": "Question", "name": "My limit went up but my app isn't using it. Why?", "acceptedAnswer": {"@type": "Answer", "text": "Many runtimes size thread pools from the CPU count once at startup — JVM ergonomics, Go automaxprocs, BLAS pools — so a live-raised limit doesn't grow them. Set parallelism explicitly or see the CPU footguns catalog for per-runtime workarounds."}},
     {"@type": "Question", "name": "Does Headroom change my requests, memory, scheduling, or bill?", "acceptedAnswer": {"@type": "Answer", "text": "No. Headroom only ever writes limits.cpu, live via in-place resize, with no restarts. Requests, memory, scheduling placement, and anything billed from requests are untouched."}},
-    {"@type": "Question", "name": "Do HPA and VPA still work?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. HPA keys off requests and is structurally unaffected (though unthrottled pods reveal true demand, so review thresholds). VPA composes when set to controlledValues: RequestsOnly — VPA owns requests, Headroom owns limits."}},
+    {"@type": "Question", "name": "Do HPA and VPA still work?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. HPA keys off requests and is structurally unaffected (though unthrottled pods reveal true demand, so review thresholds). VPA composes when set to controlledValues: RequestsOnly — VPA owns requests, Headroom owns limits. Headroom leaves a pod alone, with a warning event, if its VPA can write CPU limits."}},
     {"@type": "Question", "name": "What happens if the Headroom controller dies?", "acceptedAnswer": {"@type": "Answer", "text": "Limits freeze at their last values and the kernel's cpu.weight keeps sharing fairly. No failure mode is worse than not running Headroom at all."}}
   ]
 }
@@ -251,7 +251,7 @@
 
     <article class="faq-item" id="hpa-vpa">
       <h2><a href="#hpa-vpa">Do HPA and VPA still work?</a></h2>
-      <p>Yes. HPA computes against requests and is structurally unaffected — though unthrottled pods reveal true demand, so utilization can exceed 100% of request and HPA may scale out earlier (correct, but review thresholds). VPA composes cleanly when set to <code>controlledValues: RequestsOnly</code>: VPA owns requests, Headroom owns limits.</p>
+      <p>Yes. HPA computes against requests and is structurally unaffected — though unthrottled pods reveal true demand, so utilization can exceed 100% of request and HPA may scale out earlier (correct, but review thresholds). VPA composes cleanly when set to <code>controlledValues: RequestsOnly</code>: VPA owns requests, Headroom owns limits. If a VPA can write CPU limits, which its default does, Headroom leaves the pod alone and emits a warning event.</p>
       <p>More: <a href="docs/tenant-guide.html#using-headroom-together-with-vpa">the VPA recipe</a> · <a href="docs/tenant-guide.html#a-note-on-hpa">HPA note</a></p>
     </article>
 

@@ -124,8 +124,8 @@ func OptedOut(pod *corev1.Pod) bool {
 // manage a pod (§6.3): non-terminal, not opted out, no pod-level resources,
 // Burstable QoS, a positive CPU request, and no container that would restart on
 // resize (§9.4.2). The remaining §6.3 gates need cluster context and live in the reconciler:
-// namespace opt-in (NamespaceManaged), owner exclusion (OwnerExcluded), and node
-// exclusion (NodeManageable). A LimitRange caps a pod rather than excluding it
+// namespace opt-in (NamespaceManaged), owner exclusion (OwnerExcluded), node
+// exclusion (NodeManageable), and VPAs that write limits (LimitManagingVPA). A LimitRange caps a pod rather than excluding it
 // (LimitRangeCapMilli).
 //
 // This gate keys off pod.Status.QOSClass, which the apiserver populates after

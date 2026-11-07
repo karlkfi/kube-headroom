@@ -310,7 +310,7 @@
           <p>Many runtimes size thread pools from a CPU count <em>at boot</em> and never re-read it — a live-raised ceiling won't grow a boot-sized pool. Set your parallelism explicitly, or accept birth-limit sizing. The <a href="docs/cpu-footguns.html">CPU footguns catalog</a> covers JVM, Go, Python, Node, .NET, Rust, and the ML/GPU stacks, with workarounds for each.</p>
         </div>
       </div>
-      <p style="font-size:14.5px; max-width:70ch">Running VPA? The two compose cleanly — VPA owns requests, Headroom owns limits — as long as VPA is set to <code>controlledValues: RequestsOnly</code>. Using HPA? Structurally unaffected, but unthrottled pods reveal true demand, so review your thresholds. Recipes for both are in the full guide.</p>
+      <p style="font-size:14.5px; max-width:70ch">Running VPA? The two compose cleanly — VPA owns requests, Headroom owns limits — as long as VPA is set to <code>controlledValues: RequestsOnly</code>. Under a VPA that can write CPU limits, Headroom leaves the pod alone and emits a warning event. Using HPA? Structurally unaffected, but unthrottled pods reveal true demand, so review your thresholds. Recipes for both are in the full guide.</p>
       <div class="cta-row">
         <a class="cta" href="docs/tenant-guide.html">READ THE FULL GUIDE</a>
         <a class="cta alt" href="docs/applicability.html">IS MY WORKLOAD A FIT?</a>

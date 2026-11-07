@@ -15,6 +15,7 @@ import (
 
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
 	"github.com/karlkfi/kube-headroom/internal/eligibility"
+	"github.com/karlkfi/kube-headroom/internal/vpa"
 )
 
 // podlog is the logger for the birth-limit webhook.
@@ -22,10 +23,10 @@ var podlog = logf.Log.WithName("pod-webhook")
 
 // SetupPodWebhookWithManager registers the birth-limit defaulting webhook for
 // Pod (§6.5). The manager's cached client backs the handler's HeadroomConfig and
-// Namespace reads.
-func SetupPodWebhookWithManager(mgr ctrl.Manager) error {
+// Namespace reads; vpas holds the VerticalPodAutoscalers that disqualify a pod.
+func SetupPodWebhookWithManager(mgr ctrl.Manager, vpas *vpa.Poller) error {
 	return ctrl.NewWebhookManagedBy(mgr, &corev1.Pod{}).
-		WithDefaulter(&PodCustomDefaulter{Reader: mgr.GetClient()}).
+		WithDefaulter(&PodCustomDefaulter{Reader: mgr.GetClient(), VPAs: vpas}).
 		Complete()
 }
 
@@ -48,6 +49,8 @@ func SetupPodWebhookWithManager(mgr ctrl.Manager) error {
 type PodCustomDefaulter struct {
 	// Reader reads the HeadroomConfig singleton and the pod's Namespace.
 	Reader client.Reader
+	// VPAs lists the VerticalPodAutoscalers in memory; a nil Poller sees none.
+	VPAs *vpa.Poller
 }
 
 // Default implements webhook.CustomDefaulter. It never returns an error: any
@@ -76,6 +79,9 @@ func (d *PodCustomDefaulter) Default(ctx context.Context, pod *corev1.Pod) error
 	rcs := eligibility.ResizableContainers(pod)
 	if eligibility.HasRestartOnResize(rcs) {
 		return nil // a restart-on-resize container disqualifies the whole pod (§9.4.2)
+	}
+	if eligibility.LimitManagingVPA(pod, rcs, d.VPAs.ForNamespace(pod.Namespace)) != "" {
+		return nil // the controller would never adjust a seed, and VPA would scale it
 	}
 
 	if seeded := seedBirthLimits(pod, rcs, cfg.multiplier, cfg.maxMultiplier, cfg.quantumMilli); len(seeded) > 0 {

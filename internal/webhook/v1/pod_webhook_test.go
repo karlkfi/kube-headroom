@@ -7,12 +7,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kubeheadroomv1alpha1 "github.com/karlkfi/kube-headroom/api/v1alpha1"
+	"github.com/karlkfi/kube-headroom/internal/vpa"
 )
 
 const (
@@ -297,5 +299,57 @@ func TestDefaultQuantizes(t *testing.T) {
 	}
 	if got := limitMilli(p, cApp); got != 200 {
 		t.Errorf("seeded limit = %dm, want 200m (round(210m) to 100m grid)", got)
+	}
+}
+
+const vpaTarget = "web"
+
+// vpaLister answers the Poller's list with one VerticalPodAutoscaler.
+type vpaLister struct {
+	client.Reader
+	controlledValues string
+}
+
+func (l vpaLister) List(_ context.Context, list client.ObjectList, _ ...client.ListOption) error {
+	spec := map[string]any{"targetRef": map[string]any{"kind": "StatefulSet", "name": vpaTarget}}
+	if l.controlledValues != "" {
+		spec["resourcePolicy"] = map[string]any{"containerPolicies": []any{map[string]any{
+			"containerName": "*", "controlledValues": l.controlledValues,
+		}}}
+	}
+	list.(*unstructured.UnstructuredList).Items = []unstructured.Unstructured{{Object: map[string]any{
+		"metadata": map[string]any{"namespace": nsA, "name": vpaTarget},
+		"spec":     spec,
+	}}}
+	return nil
+}
+
+// A seed on a pod under a limit-managing VPA would never be adjusted, and VPA, which
+// leaves an absent limit absent, would scale it from then on.
+func TestDefaultLeavesPodsUnderALimitManagingVPA(t *testing.T) {
+	tests := []struct {
+		name             string
+		controlledValues string
+		want             int64
+	}{
+		{"the default RequestsAndLimits seeds nothing", "", 0},
+		{"RequestsOnly seeds as usual", "RequestsOnly", 200},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := newDefaulter(config(nil), managedNS())
+			d.VPAs = vpa.NewPoller(vpaLister{controlledValues: tt.controlledValues})
+			d.VPAs.Refresh(context.Background())
+
+			p := pod(container(cApp, 100, 0))
+			yes := true
+			p.OwnerReferences = []metav1.OwnerReference{{Kind: "StatefulSet", Name: vpaTarget, Controller: &yes}}
+			if err := d.Default(context.Background(), p); err != nil {
+				t.Fatalf("Default: %v", err)
+			}
+			if got := limitMilli(p, cApp); got != tt.want {
+				t.Errorf("seeded limit = %dm, want %dm", got, tt.want)
+			}
+		})
 	}
 }
