@@ -30,6 +30,8 @@ const descriptions = {
     "Migrating a Headroom install from kustomize to Helm: what changes, adopting in place with no downtime or uninstall/reinstall, and how to verify the result.",
   "news/index.md":
     "Release announcements and project news for Headroom, the Kubernetes controller that resizes CPU limits to share unrequested node capacity.",
+  "news/2026-11-headroom-v0.2.0.md":
+    "Headroom v0.2.0: limits now follow config and enrollment changes on quiet nodes, events reach the API server, and LimitRange caps hold. What to check when upgrading.",
   "news/2026-07-headroom-v0.1.0.md":
     "Headroom v0.1.0, the first public release: what's in it, why it ships dry-run by default, how to install the Helm charts, and whether you should run it yet.",
   "queue/index.md":
@@ -69,7 +71,7 @@ export default defineConfig({
   base: "/docs/",
   srcDir: "../docs",
   outDir: "./.vitepress/dist",
-  srcExclude: ["queue/README.md", "plan/**"],
+  srcExclude: ["queue/README.md", "plan/**", "releases/**"],
   // Repo docs link to files outside the docs tree (config/samples, CLAUDE.md);
   // those are fine on GitHub but unresolvable here.
   ignoreDeadLinks: true,
@@ -145,6 +147,7 @@ export default defineConfig({
       {
         text: "News",
         items: [
+          { text: "v0.2.0 — quiet-node and event fixes", link: "/news/2026-11-headroom-v0.2.0" },
           { text: "v0.1.0 — first public release", link: "/news/2026-07-headroom-v0.1.0" },
         ],
       },

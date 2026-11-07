@@ -47,7 +47,7 @@
 
 <a class="announce" href="{{ANNOUNCEMENT}}">
   <span class="announce-tag">NEW</span>
-  Headroom v{{VERSION}} — first public release, Apache-2.0. Read the announcement →
+  Headroom v{{VERSION}} — quiet-node fixes, working events, LimitRange caps. Read the announcement →
 </a>
 
 <nav class="nav" aria-label="Main">
@@ -317,7 +317,7 @@
       <h2 id="status-h" class="sr-only">Project status</h2>
       <div class="card">
         <h3><span aria-hidden="true">▮▮</span> ON AIR · v{{VERSION}}</h3>
-        <p>Headroom <a href="{{ANNOUNCEMENT}}">v{{VERSION}} is out</a> — the first public release, Apache-2.0. The policy core is covered by table + property tests for every design invariant, and the controller installs via two Helm charts (<a href="https://github.com/karlkfi/kube-headroom/releases/tag/v{{VERSION}}">release notes</a>).</p>
+        <p>Headroom <a href="{{ANNOUNCEMENT}}">v{{VERSION}} is out</a>, Apache-2.0. The policy core is covered by table + property tests for every design invariant, and the controller installs via two Helm charts (<a href="https://github.com/karlkfi/kube-headroom/releases/tag/v{{VERSION}}">release notes</a>).</p>
         <p>It defaults to <code>dryRun: true</code> — computing targets, annotating pods, and emitting metrics without issuing a single resize until you flip the switch. Start with the <a href="docs/runbook.html">runbook preflight</a>, follow priorities in the <a href="/docs/queue/">backlog</a>, or star the <a href="https://github.com/karlkfi/kube-headroom">repo</a>.</p>
       </div>
     </div>

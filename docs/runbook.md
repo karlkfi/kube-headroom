@@ -338,6 +338,8 @@ Prometheus series (design §8.1):
 
 - `headroom_node_factor{node}` — the per-node slack factor `F = 1 + S/M`.
 - `headroom_node_slack_cores{node}` — unbooked CPU on the node.
+- `headroom_node_managed_pods{node}` — managed pods given a target in the node's
+  last reconcile; design §6.4 says when a refused pod is left out.
 - `headroom_pod_limit_cores{namespace,pod}` — the computed/applied ceiling.
 - `headroom_resizes_total{result}` — `applied` / `dry-run` / `infeasible` /
   `quota-denied` / `limitrange-denied` / `forbidden` / `conflict` / `error`.
