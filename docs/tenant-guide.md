@@ -114,7 +114,7 @@ a 100m request and `max-cpu: 100m` runs at 110m.
 
 A LimitRange in your namespace caps the limit the same way, whatever `max-cpu`
 says. A pod's limit is split across its containers by request, so a per-container
-`max` stops the pod when the container with the largest request reaches it. A `max` with no `default` also gives every container in the namespace that
+`max` stops the pod when the container with the largest request reaches it. A per-container `max` with no `default` also gives every container in the namespace that
 `max` as its default limit and request, so a container with no CPU request books it;
 the [runbook](runbook.md#limitrange-default) lists the effects.
 

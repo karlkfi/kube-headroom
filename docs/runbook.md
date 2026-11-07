@@ -59,8 +59,8 @@ properties; the ResourceQuota one is the sharp edge.
   LimitRange applies within seconds, or when the backoff ends for a pod it refused.
   A `max` below a running pod's request leaves no limit the apiserver will admit,
   which surfaces as [`limitrange-denied`](#resize-outcomes). The script warns on a
-  CPU `max`, a `maxLimitRequestRatio` and a `default`. A `max` with no `default`
-  also warns about `default`, because the apiserver copies `max` into `default` and
+  CPU `max`, a `maxLimitRequestRatio` and a `default`. A per-container `max` with no
+  `default` also warns about `default`, because the apiserver copies `max` into `default` and
   `defaultRequest` (measured on 1.35: `max: 2` came back as `default: 2` and
   `defaultRequest: 2`), so the [side effects of a CPU default](#limitrange-default)
   apply to it too.
@@ -312,7 +312,9 @@ Per-pod resize results the controller handles (design §6.4), each with a distin
 
 When a pod's `backoffPeriod` (60s) ends, its node reconciles and retries it without
 waiting for a pod event. A refusal nothing has fixed therefore adds about one to
-its count per minute, per pod, and one warning event.
+its count per minute, per pod, and one warning event. Its neighbors' limits stay
+where they are: a refused pod keeps its share of the node's slack during the window,
+so a long refusal holds a share nobody uses until the cause is fixed.
 
 A rising `quota-denied` count means a managed namespace still has a `limits.cpu`
 quota. Fix the quota (see [Preflight](#preflight)); do not tune around it. A
