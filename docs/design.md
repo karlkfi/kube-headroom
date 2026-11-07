@@ -298,9 +298,12 @@ serves the webhook. Each reconcile and admission reads the result from memory.
 The list is paged because a VPA decodes to about 10KB of maps, status included, while
 Headroom keeps only the spec fields it reads. Listed whole, about 4,000 VPAs with
 three-container recommendations OOM-killed the chart's default 128Mi limit on kind.
-Paged, the same install held 20,000 at a peak of 55MiB, using about 5% of a CPU, and
-108MiB with 3,000 pending pods added and Headroom managing pods. The climb stopped at
-20,000, so that is a tested count rather than a ceiling. Pods cost more than VPAs do.
+Paged, the same install held 20,000 at a peak of 55 to 64MiB across kind v1.35 and
+v1.37, using about 5% of a CPU, and 108 to 122MiB with 3,000 pending pods added and
+Headroom managing pods, so the margin can be as little as 6MiB. Whether that spread
+comes from the version or from run to run is not established. The climb stopped at
+20,000, so that is a tested count rather than a ceiling. The pods were small and
+pending, and larger or running pods cost more.
 
 With the CRD absent or the list forbidden, Headroom sees no VPAs and logs that once.
 If a list fails any other way, it logs that once and keeps the last list. No reconcile
