@@ -64,10 +64,13 @@ properties; the ResourceQuota one is the sharp edge.
   `defaultRequest` (measured on 1.35: `max: 2` came back as `default: 2` and
   `defaultRequest: 2`), so the [side effects of a CPU default](#limitrange-default)
   apply to it too.
-- **VPA, if present, must be `controlledValues: RequestsOnly`** on managed pods.
-  Default-mode VPA (`RequestsAndLimits`) scales limits and conflicts directly —
-  exclude those pods. See the [tenant guide](tenant-guide.md#vpa) for the
-  coexistence recipe.
+- **VPA, if present, should be `controlledValues: RequestsOnly`** on pods you want
+  managed. Default-mode VPA (`RequestsAndLimits`) scales limits, so Headroom leaves
+  those pods unmanaged and emits one `VPAManagesLimit` warning per pod. They keep
+  the limit they have. `updateMode: Off` writes nothing and stays managed. See the
+  [tenant guide](tenant-guide.md#vpa) for the recipe. Headroom notices a VPA change
+  within about 30 seconds, and it reads VPAs with `list` alone, so the chart's RBAC
+  works whether or not the CRD is installed.
 - **Containers without a CPU request are never capped.** Headroom manages a pod
   whose *total* request is positive, and caps only the containers that carry a
   request. A request-less sidecar in a managed pod runs unbounded. Decide whether

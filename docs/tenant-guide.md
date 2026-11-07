@@ -56,8 +56,9 @@ metadata:
     kube-headroom.dev/mode: unmanaged
 ```
 
-Pods that are Guaranteed QoS, BestEffort, set pod-level `spec.resources`, or have
-no CPU request are never managed regardless of labels (see [applicability](applicability.md)).
+Pods that are Guaranteed QoS, BestEffort, set pod-level `spec.resources`, sit under a
+[VPA that writes CPU limits](#vpa), or have no CPU request are never managed regardless
+of labels (see [applicability](applicability.md)).
 A pod with pod-level `spec.resources` gets no birth limit from Headroom either, so
 without a pod-level CPU limit, any container with no CPU limit has no ceiling at all.
 
@@ -180,11 +181,26 @@ spec:
   of its leaf (from `kube-controller-manager`); this is expected and does not
   cause churn afterward.
 
-> **Do not** run VPA in its default `controlledValues: RequestsAndLimits` mode on
-> managed pods — it scales limits proportionally with requests and fights
-> Headroom directly. Those pods are refused by the eligibility check; either
-> switch the VPA to `RequestsOnly` or opt the pods out with
-> `kube-headroom.dev/mode: unmanaged`.
+> **A VPA that can write CPU limits keeps Headroom off your pod.** That includes the
+> default `controlledValues: RequestsAndLimits`, which scales limits in proportion to
+> requests, in any `updateMode` except `Off`. Headroom leaves those pods unmanaged and
+> emits one `VPAManagesLimit` warning event per pod. Switch the VPA to `RequestsOnly`
+> to use both, and Headroom picks the pod up within about 30 seconds.
+
+A skipped pod still counts toward its node's slack, and gets no birth limit. If
+Headroom already set a limit, the pod keeps it until VPA scales it or the pod is
+recreated, and its `kube-headroom.dev/status` annotation stays as last written. A
+pod with no CPU limit at all stays uncapped.
+
+VPAs in recommendation mode (`updateMode: "Off"`) write nothing and never affect
+management, and neither does a VPA whose policy leaves CPU out with
+`controlledResources: ["memory"]` or sets `mode: "Off"` for the containers.
+
+Headroom finds a VPA through the pod's controller: a Deployment, StatefulSet,
+DaemonSet, ReplicaSet, Job, CronJob, or any custom controller that owns its pods
+directly. If your VPA targets a custom resource that owns a Deployment, Headroom does
+not see it and the two will overwrite each other, so opt those pods out with
+`kube-headroom.dev/mode: unmanaged`.
 
 ## A note on HPA
 

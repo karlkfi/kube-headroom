@@ -219,12 +219,12 @@ The unit of reconciliation is the **node**, not the pod — every scheduling eve
    b. **Hysteresis:** for each managed pod, skip if `|target − current| / current < deadband` (default 10%) — with one exception: a *shrink* that would bring an above-entitlement limit down toward request on a node where `S` decreased is applied at a tighter deadband (default 5%), because stale-generous limits are a fairness bug while stale-stingy limits are only an efficiency bug.
    c. Issue resize patches (server-side apply on the `resize` subresource, dedicated fieldManager `headroom`) through a per-node token bucket (default 10 patches/s) and a client QPS budget (§7).
    d. Record annotation + event per changed pod (Section 8.1).
-5. **Settings** fan out to every node they can affect, each key debounced and jittered as in step 3: a `HeadroomConfig` spec change enqueues all nodes, filtered on `metadata.generation` so the controller's status writes never do. A Namespace label change or any LimitRange change enqueues only the nodes holding a pod in that namespace.
+5. **Settings** fan out to every node they can affect, each key debounced and jittered as in step 3: a `HeadroomConfig` spec change enqueues all nodes, filtered on `metadata.generation` so the controller's status writes never do. A Namespace label change or any LimitRange change enqueues only the nodes holding a pod in that namespace. A VerticalPodAutoscaler change does the same, up to 30 seconds late, because VPAs are listed on a period rather than watched (§6.3).
 6. **Backoff expiry:** a reconcile that leaves a pod in backoff (§6.4) requeues the node for when the first such window ends, plus a jittered debounce, so a refused pod is retried on a node with no other events. The retry moves no neighbor's target (§6.4).
 
 ### 6.3 Pod eligibility
 
-A pod is managed iff **all** of: its namespace is labeled `kube-headroom.dev/mode: managed` (or matched by `spec.namespaceSelector`); the pod itself does not set `kube-headroom.dev/mode: unmanaged`; no pod-level resources (`spec.resources`); QoS class Burstable; the pod's total CPU **request > 0**, summed over app and restartable-init (sidecar) containers; no container whose CPU `resizePolicy` is `RestartContainer` (§9.4.2); not on a Windows node or a node with static CPU/Memory Manager policy (detect via node labels/config, plus handle `Infeasible` defensively); pod not owned by anything in an operator-configured exclusion list (kube-system excluded by default).
+A pod is managed iff **all** of: its namespace is labeled `kube-headroom.dev/mode: managed` (or matched by `spec.namespaceSelector`); the pod itself does not set `kube-headroom.dev/mode: unmanaged`; no pod-level resources (`spec.resources`); QoS class Burstable; the pod's total CPU **request > 0**, summed over app and restartable-init (sidecar) containers; no container whose CPU `resizePolicy` is `RestartContainer` (§9.4.2); not on a Windows node or a node with static CPU/Memory Manager policy (detect via node labels/config, plus handle `Infeasible` defensively); pod not owned by anything in an operator-configured exclusion list (kube-system excluded by default); no VerticalPodAutoscaler that can write the pod's CPU limit.
 
 The `mode` gate uses **enum keywords** (`managed`/`unmanaged`), not booleans, so an
 unquoted YAML 1.1 token (`true`/`yes`) cannot silently coerce; it is
@@ -255,6 +255,44 @@ free. An empty `resources: {}` is not pod-level resources to this gate, but what
 happens next depends on the version: 1.37 keeps such a pod Burstable and Headroom
 manages it, while 1.35 and 1.36.1 class it BestEffort whatever its containers
 request, so Headroom does not.
+
+A VerticalPodAutoscaler that can write a pod's CPU limit disqualifies the pod, and
+its running containers keep whatever limit they have. VPA scales a limit in
+proportion to the request, so Headroom and VPA would keep overwriting each other
+(§8.3). Measured on kind 1.35 with the VPA 1.5.1 updater and a pod capped at 500m by
+`max-cpu`: each move of the recommendation took the limit to 750m or 1000m, and
+Headroom put it back within two seconds. Following VPA 1.5.1's own defaults, a VPA counts unless its `updateMode` is
+`Off` or, for every app and sidecar container, its policy sets `controlledValues:
+RequestsOnly`, sets `mode: Off`, or lists `controlledResources` without `cpu`. An unset `controlledValues` means
+`RequestsAndLimits`, so a VPA that names none counts. `Initial` and `Recreate` count
+too: they write only when VPA admits a pod, and Headroom would then overwrite that
+limit, which breaks one writer per field. Two VPAs on one target count if either
+writes limits, although VPA itself acts only on the older one.
+
+A skipped pod still books slack and leaves the distribution basis, like any other
+unmanaged pod, so it holds no share for itself and its neighbors' targets do not
+depend on the VPA's state. A limit Headroom set earlier stays until VPA scales it or
+the pod is recreated. Headroom does not restore the original limit, because that
+would be one more write to a field it has just given up. The webhook applies the same
+gate: VPA leaves an absent limit absent, and a seed would give it one to scale. The
+controller emits one `VPAManagesLimit` warning per pod and VPA, and again after a
+restart. The pod's `kube-headroom.dev/status` annotation stays as last written.
+
+A VPA's `targetRef` names the pod's topmost controller. VPA walks owner references to
+find it, which takes a read per level, so Headroom compares the pod's controller and
+derives the two common parents from the names their controllers generate: a
+Deployment's ReplicaSet is `<name>-<hash>`, and a CronJob's Job is `<name>-<time>`. A
+target further up a longer chain is not seen, and such a pod needs the opt-out label.
+
+VPA is an optional CRD, so Headroom lists VPAs every 30 seconds rather than watching
+them. A controller-runtime watch on a kind the apiserver does not serve logs an error
+every 10 seconds and fails the manager's cache sync after two minutes. The list costs
+one request per replica per period, on every replica because each serves the webhook.
+Each reconcile and admission reads the result from memory. With the CRD absent or the
+list forbidden, Headroom sees no VPAs and logs that once. If a list fails any other
+way, it keeps the last list. No reconcile runs before the first list finishes. A VPA
+reaches running pods within one period plus a debounce, so a pod created in that
+window can still get a seed and keeps it.
 
 The request gate is **pod-level, not per-container**. A managed pod may contain a
 container with no CPU request; that container receives no limit (§5.4, it has no
@@ -328,7 +366,7 @@ Design rule: **any observed throttling must be explainable in two kubectl comman
 ### 8.3 Interactions with other systems
 
 - **HPA:** CPU-utilization HPA computes against *requests* — structurally unaffected. One behavioral change to document loudly: throttling previously acted as a silent cap on the HPA signal (a pod pinned at its limit reports bounded usage). Unthrottled pods reveal true demand, so utilization can exceed 100% of request and HPA may scale out earlier/more aggressively. This is *correct* (demand is no longer masked), but teams tuning HPA thresholds will notice; recommend reviewing stabilization windows on adoption. Anything custom keyed on *limits* (rare) will see them move.
-- **VPA:** two supported postures. (a) *Composition* — VPA with `resourcePolicy.containerPolicies[].controlledValues: RequestsOnly` manages requests while leaving limits alone; Headroom owns `limits.cpu`. VPA's request changes are just Headroom inputs (request-change events already enqueue the node, §6.2). Both actors use the resize subresource with distinct SSA fieldManagers on disjoint fields — **coexistence is verified** (Phase 0 spike Q2d: `vpa-sim` owning `requests.cpu`, `headroom` owning `limits.cpu`, ownership granular per leaf, zero conflicts in steady state; each controller's *first* write forces ownership once, which is a one-time transfer, not a loop). The recommended combined recipe is in the [tenant guide](tenant-guide.md). (b) *Mutual exclusion* — VPA in its default `RequestsAndLimits` mode (which scales limits proportionally with requests) conflicts directly; eligibility check refuses pods matched by such a VPA.
+- **VPA:** two supported postures. (a) *Composition* — VPA with `resourcePolicy.containerPolicies[].controlledValues: RequestsOnly` manages requests while leaving limits alone; Headroom owns `limits.cpu`. VPA's request changes are just Headroom inputs (request-change events already enqueue the node, §6.2). Both actors use the resize subresource with distinct SSA fieldManagers on disjoint fields — **coexistence is verified** (Phase 0 spike Q2d: `vpa-sim` owning `requests.cpu`, `headroom` owning `limits.cpu`, ownership granular per leaf, zero conflicts in steady state; each controller's *first* write forces ownership once, which is a one-time transfer, not a loop). The recommended combined recipe is in the [tenant guide](tenant-guide.md). (b) *Mutual exclusion* — VPA in its default `RequestsAndLimits` mode (which scales limits proportionally with requests) conflicts directly, so the eligibility check leaves pods matched by such a VPA unmanaged (§6.3). `updateMode: Off` writes nothing and composes the same way as (a).
 - **Google GKE Multidimensional Pod Autoscaler (MPA, beta):** compatible by construction — MPA scales horizontally on CPU utilization and vertically on *memory requests* (`containerControlledResources: [memory]`); zero field overlap with `limits.cpu`. The HPA-signal note above applies to MPA's horizontal-CPU dimension identically.
 - **Commercial rightsizers (ScaleOps, Cast AI, StormForge, PerfectScale, etc.):** same rule as VPA — compatible when they manage requests, conflicting when they set or strip limits in managed namespaces. Per-namespace opt-in gives clean territory division. Node-agent-based tools that write cgroups directly (Koordinator, Crane) must not run on Headroom-managed nodes.
 - **ResourceQuota:** `limits.cpu` quotas in managed namespaces make Headroom's raises consume tenant quota, and an over-budget raise **fails admission with a 403** (not `Infeasible`) — verified in the Phase 0 spike (Q2c: quota is delta-accounted on resize; a within-quota raise succeeds and updates `used.limits.cpu`, an over-quota raise is rejected). **Hard requirement:** managed namespaces must quota on `requests.cpu` only, never `limits.cpu`. Ship this as a preflight check and a documented constraint (see [runbook](runbook.md#preflight)); the controller treats the 403 as a back-off signal (§6.4).
@@ -437,7 +475,7 @@ Spec fields: `policy: Proportional` (enum for future), `minBurstFloor`, `maxMult
 2. Set nothing if the container's `resizePolicy` for CPU is `RestartContainer` — treat as ineligible (a limit change must never restart a workload).
 3. Informer cache transform to strip pod fields (keep metadata, nodeName, phase, QoS, container resources, resizePolicy, ownerRefs).
 4. All timing knobs jittered.
-5. RBAC: get/list/watch pods+nodes+namespaces+limitranges+vpa; patch on `pods/resize` (the CPU limit) **and** patch on `pods` (metadata only, for the `kube-headroom.dev/status` annotation of §8.1); events create. Nothing else — notably no pod `update`/`delete`, and the `pods` patch never touches any field but the status annotation.
+5. RBAC: get/list/watch pods+nodes+namespaces+limitranges; list VPAs; patch on `pods/resize` (the CPU limit) **and** patch on `pods` (metadata only, for the `kube-headroom.dev/status` annotation of §8.1); events create. Nothing else — notably no pod `update`/`delete`, and the `pods` patch never touches any field but the status annotation.
 
 ---
 
@@ -447,7 +485,7 @@ Spec fields: `policy: Proportional` (enum for future), `minBurstFloor`, `maxMult
 
 **Phase 1 — MVP:** policy core + node reconciler + mutating webhook (`failurePolicy: Ignore`, §6.5 — required for short-lived-pod coverage) + dry-run mode + metrics + annotations/events + docs (including the applicability matrix §8.4 and the "when not to use this" note §8.5). Exit criteria: on a test cluster, a pod on an empty node runs unthrottled at ~node capacity; scheduling neighbors shrinks its limit within 5s; a 20-second Job in a managed namespace gets a boosted limit at admission; controller kill mid-operation leaves cluster safe; zero patches at steady state.
 
-**Phase 2 — adoption hardening:** VPA-exclusion check; `kubectl` plugin.
+**Phase 2 — adoption hardening:** VPA-exclusion check ✅ (§6.3); `kubectl` plugin.
 
 **Phase 3 — optional/experimental:** `cpu.max.burst` node agent (spec-consistent burst banking only); per-tenant slack weighting; usage/PSI-informed policy mode; pod-level resources support as that API matures.
 
