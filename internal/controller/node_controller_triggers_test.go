@@ -552,7 +552,7 @@ var _ = Describe("Node reconcile triggers outside scheduling (§6.2)", func() {
 			for _, p := range refusals {
 				before := denied()
 				Expect(k8sClient.Create(ctx, &corev1.LimitRange{
-					Name: "cap", Namespace: p.ns,
+					Name: "refuses", Namespace: p.ns,
 					Spec: corev1.LimitRangeSpec{Limits: []corev1.LimitRangeItem{{
 						Type: corev1.LimitTypeContainer,
 						Max:  corev1.ResourceList{corev1.ResourceCPU: resource.MustParse("50m")},
