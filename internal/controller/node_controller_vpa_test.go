@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
+	ctrlconfig "sigs.k8s.io/controller-runtime/pkg/config"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -148,10 +149,12 @@ var _ = Describe("Pods under a limit-managing VPA (§6.3)", Ordered, func() {
 		}}
 		Expect(k8sClient.Update(ctx, &pod)).To(Succeed())
 
+		skipNameValidation := true // the trigger specs run a node controller in this process too
 		mgr, err := ctrl.NewManager(cfg, ctrl.Options{
 			Scheme:                 scheme.Scheme,
 			Metrics:                metricsserver.Options{BindAddress: "0"},
 			HealthProbeBindAddress: "0",
+			Controller:             ctrlconfig.Controller{SkipNameValidation: &skipNameValidation},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		poller = vpa.NewPoller(mgr.GetAPIReader())
