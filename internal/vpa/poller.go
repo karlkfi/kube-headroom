@@ -1,8 +1,8 @@
 // Package vpa keeps a cluster-wide view of VerticalPodAutoscalers for the §6.3
 // exclusion check. VPA is an optional CRD, so a watch does not fit: a controller
 // watching a kind the apiserver does not serve logs an error every ten seconds and
-// fails its cache sync after two minutes. Listing on a period costs one request,
-// and treats a CRD installed or removed later like any other change.
+// fails its cache sync after two minutes. Listing on a period costs a request per
+// page, and treats a CRD installed or removed later like any other change.
 package vpa
 
 import (
@@ -28,6 +28,9 @@ import (
 const (
 	defaultPeriod = 30 * time.Second
 	listTimeout   = 10 * time.Second
+	// pageSize bounds what one list holds in memory. An item decodes to about 10KB
+	// of maps, status included, and only the spec fields in eligibility.VPA are kept.
+	pageSize = 500
 	// changeBuffer holds namespace changes while no controller drains them, as on a
 	// replica that has not won the lease. Its first reconciles cover every node anyway.
 	changeBuffer = 1024
@@ -115,22 +118,14 @@ func (p *Poller) Changes() <-chan event.GenericEvent { return p.changes }
 // the view empties; any other failure keeps the last view. Each state is logged once,
 // on the way in.
 func (p *Poller) Refresh(ctx context.Context) {
-	listCtx, cancel := context.WithTimeout(ctx, listTimeout)
-	defer cancel()
-	list := &unstructured.UnstructuredList{}
-	list.SetGroupVersionKind(listKind)
-	err := p.reader.List(listCtx, list)
+	byNS, err := p.list(ctx)
 	if ctx.Err() != nil {
 		return // shutting down: the failure says nothing about the API
 	}
 
-	var byNS map[string][]eligibility.VPA
 	state := stateServed
 	switch {
 	case err == nil:
-		if byNS, err = parse(list); err != nil {
-			state = stateFailing
-		}
 	case meta.IsNoMatchError(err) || apierrors.IsNotFound(err):
 		state = stateAbsent
 	case apierrors.IsForbidden(err):
@@ -181,8 +176,30 @@ func (p *Poller) notify(previous, current map[string][]eligibility.VPA) {
 	}
 }
 
-func parse(list *unstructured.UnstructuredList) (map[string][]eligibility.VPA, error) {
+// list reads every page, or returns an error and nothing: half a list would read as
+// VPAs having been deleted.
+func (p *Poller) list(ctx context.Context) (map[string][]eligibility.VPA, error) {
 	byNS := map[string][]eligibility.VPA{}
+	token := ""
+	for {
+		page := &unstructured.UnstructuredList{}
+		page.SetGroupVersionKind(listKind)
+		pageCtx, cancel := context.WithTimeout(ctx, listTimeout)
+		err := p.reader.List(pageCtx, page, client.Limit(pageSize), client.Continue(token))
+		cancel()
+		if err != nil {
+			return nil, err
+		}
+		if err := parse(page, byNS); err != nil {
+			return nil, err
+		}
+		if token = page.GetContinue(); token == "" {
+			return byNS, nil
+		}
+	}
+}
+
+func parse(list *unstructured.UnstructuredList, byNS map[string][]eligibility.VPA) error {
 	for i := range list.Items {
 		item := &list.Items[i]
 		var spec struct {
@@ -199,10 +216,10 @@ func parse(list *unstructured.UnstructuredList) (map[string][]eligibility.VPA, e
 		}
 		raw, _, err := unstructured.NestedMap(item.Object, "spec")
 		if err != nil {
-			return nil, fmt.Errorf("read spec of %s/%s: %w", item.GetNamespace(), item.GetName(), err)
+			return fmt.Errorf("read spec of %s/%s: %w", item.GetNamespace(), item.GetName(), err)
 		}
 		if err := runtime.DefaultUnstructuredConverter.FromUnstructured(raw, &spec); err != nil {
-			return nil, fmt.Errorf("decode spec of %s/%s: %w", item.GetNamespace(), item.GetName(), err)
+			return fmt.Errorf("decode spec of %s/%s: %w", item.GetNamespace(), item.GetName(), err)
 		}
 		byNS[item.GetNamespace()] = append(byNS[item.GetNamespace()], eligibility.VPA{
 			Name:       item.GetName(),
@@ -212,5 +229,5 @@ func parse(list *unstructured.UnstructuredList) (map[string][]eligibility.VPA, e
 			Policies:   spec.ResourcePolicy.ContainerPolicies,
 		})
 	}
-	return byNS, nil
+	return nil
 }

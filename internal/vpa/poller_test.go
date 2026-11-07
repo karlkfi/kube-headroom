@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"maps"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -158,6 +160,74 @@ func TestSyncedOnlyAfterTheFirstList(t *testing.T) {
 				t.Fatal("not Synced after the first list")
 			}
 		})
+	}
+}
+
+// pagedReader serves pages as an apiserver does: a token names the next one.
+type pagedReader struct {
+	client.Reader
+	pages  [][]unstructured.Unstructured
+	failOn int // index of the page that fails; 0 means none
+	limits []int64
+}
+
+func (r *pagedReader) List(_ context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	o := client.ListOptions{}
+	o.ApplyOptions(opts)
+	r.limits = append(r.limits, o.Limit)
+	page := 0
+	if o.Continue != "" {
+		page, _ = strconv.Atoi(o.Continue)
+	}
+	if page > 0 && page == r.failOn {
+		return errors.New("boom")
+	}
+	l := list.(*unstructured.UnstructuredList)
+	l.Items = r.pages[page]
+	if page+1 < len(r.pages) {
+		l.SetContinue(strconv.Itoa(page + 1))
+	}
+	return nil
+}
+
+func threePages() [][]unstructured.Unstructured {
+	return [][]unstructured.Unstructured{
+		{vpaObject(nsA, "one", targetSpec("one"))},
+		{vpaObject(nsA, "two", targetSpec("two"))},
+		{vpaObject(nsB, "three", targetSpec("three"))},
+	}
+}
+
+func TestRefreshReadsEveryPageABoundedSizeAtATime(t *testing.T) {
+	r := &pagedReader{pages: threePages()}
+	p := NewPoller(r)
+	p.Refresh(context.Background())
+
+	if got := len(p.ForNamespace(nsA)); got != 2 {
+		t.Errorf("%s holds %d VPAs across its two pages, want 2", nsA, got)
+	}
+	if got := len(p.ForNamespace(nsB)); got != 1 {
+		t.Errorf("%s holds %d VPAs from the last page, want 1", nsB, got)
+	}
+	if want := []int64{pageSize, pageSize, pageSize}; !slices.Equal(r.limits, want) {
+		t.Errorf("list limits = %v, want %v", r.limits, want)
+	}
+}
+
+func TestRefreshKeepsTheLastListWhenALaterPageFails(t *testing.T) {
+	r := &pagedReader{pages: threePages()}
+	p := NewPoller(r)
+	p.Refresh(context.Background())
+	drain(p)
+
+	// A view built from the pages before the failure would read as VPAs deleted.
+	r.failOn = 2
+	p.Refresh(context.Background())
+	if got := len(p.ForNamespace(nsB)); got != 1 {
+		t.Errorf("%s holds %d VPAs after a failed page, want the last list's 1", nsB, got)
+	}
+	if got := drain(p); len(got) != 0 {
+		t.Errorf("a failed page announced changes to %v", got)
 	}
 }
 
