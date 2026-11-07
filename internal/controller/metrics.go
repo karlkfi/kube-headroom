@@ -60,8 +60,9 @@ var (
 		Help:      "Node CPU slack in cores (allocatable minus what the scheduler books for all pods), floored at 0.",
 	}, []string{nodeLabel})
 
-	// nodeManagedPods is the count of pods Headroom set a target for on the node:
-	// N in the policy, less any holding a share from backoff.
+	// nodeManagedPods is the count of pods Headroom set a target for in the node's
+	// last reconcile: N in the policy, less any holding a share from backoff then.
+	// A pod retried in that reconcile counts even if the retry is refused (§6.4).
 	nodeManagedPods = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Namespace: metricNamespace,
 		Name:      "node_managed_pods",
