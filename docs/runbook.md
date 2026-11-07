@@ -70,7 +70,9 @@ properties; the ResourceQuota one is the sharp edge.
   the limit they have. `updateMode: Off` writes nothing and stays managed. See the
   [tenant guide](tenant-guide.md#vpa) for the recipe. Headroom notices a VPA change
   within about 30 seconds, and it reads VPAs with `list` alone, so the chart's RBAC
-  works whether or not the CRD is installed.
+  works whether or not the CRD is installed. The default 128Mi limit held 20,000 VPAs
+  and 3,000 pending pods at a 108MiB peak on kind. Raise `resources.limits.memory` for
+  more than that.
 - **Containers without a CPU request are never capped.** Headroom manages a pod
   whose *total* request is positive, and caps only the containers that carry a
   request. A request-less sidecar in a managed pod runs unbounded. Decide whether

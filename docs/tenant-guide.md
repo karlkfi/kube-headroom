@@ -202,6 +202,11 @@ directly. If your VPA targets a custom resource that owns a Deployment, Headroom
 not see it and the two will overwrite each other, so opt those pods out with
 `kube-headroom.dev/mode: unmanaged`.
 
+The match goes by name, so it can skip a pod VPA would leave alone. A VPA on
+StatefulSet `dup` also skips the pods of Deployment `dup`, and a VPA naming a
+Deployment's ReplicaSet skips that Deployment's pods. The `VPAManagesLimit` event
+names the VPA, so rename the workload or remove the VPA to get the pod back.
+
 ## A note on HPA
 
 CPU-utilization HPA computes against **requests**, so it is structurally

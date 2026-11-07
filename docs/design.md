@@ -270,11 +270,11 @@ limit, which breaks one writer per field. Two VPAs on one target count if either
 writes limits, although VPA itself acts only on the older one.
 
 A skipped pod still books slack and leaves the distribution basis, like any other
-unmanaged pod, so it holds no share for itself and its neighbors' targets do not
-depend on the VPA's state. A limit Headroom set earlier stays until VPA scales it or
-the pod is recreated. Headroom does not restore the original limit, because that
-would be one more write to a field it has just given up. The webhook applies the same
-gate: VPA leaves an absent limit absent, and a seed would give it one to scale. The
+unmanaged pod, so it holds no share for itself. Its neighbors gain that share when
+the VPA appears and lose it when the VPA goes. A limit Headroom set earlier stays
+until VPA scales it or the pod is recreated. Headroom does not restore the original
+limit, because that would be one more write to a field it has just given up. The
+webhook applies the same gate: VPA leaves an absent limit absent, and a seed would give it one to scale. The
 controller emits one `VPAManagesLimit` warning per pod and VPA, and again after a
 restart. The pod's `kube-headroom.dev/status` annotation stays as last written.
 
@@ -283,16 +283,32 @@ find it, which takes a read per level, so Headroom compares the pod's controller
 derives the two common parents from the names their controllers generate: a
 Deployment's ReplicaSet is `<name>-<hash>`, and a CronJob's Job is `<name>-<time>`. A
 target further up a longer chain is not seen, and such a pod needs the opt-out label.
+The derivation can also match a pod VPA would not act on, because it does not check
+the parent's kind: Argo's `Rollout web` owns ReplicaSets too and should match, so a
+VPA on StatefulSet `dup` also skips the pods of Deployment `dup`. A VPA that targets a
+Deployment's ReplicaSet by name skips those pods as well, though VPA acts only on the
+topmost controller. Each mistake is a visible skip with a warning naming the VPA.
 
 VPA is an optional CRD, so Headroom lists VPAs every 30 seconds rather than watching
 them. A controller-runtime watch on a kind the apiserver does not serve logs an error
 every 10 seconds and fails the manager's cache sync after two minutes. The list costs
-one request per replica per period, on every replica because each serves the webhook.
-Each reconcile and admission reads the result from memory. With the CRD absent or the
-list forbidden, Headroom sees no VPAs and logs that once. If a list fails any other
-way, it keeps the last list. No reconcile runs before the first list finishes. A VPA
-reaches running pods within one period plus a debounce, so a pod created in that
-window can still get a seed and keeps it.
+one request per 500 VPAs, per replica, per period, on every replica because each
+serves the webhook. Each reconcile and admission reads the result from memory.
+
+The list is paged because a VPA decodes to about 10KB of maps, status included, while
+Headroom keeps only the spec fields it reads. Listed whole, about 4,000 VPAs with
+three-container recommendations OOM-killed the chart's default 128Mi limit on kind.
+Paged, the same install held 20,000 at a peak of 55MiB, using about 5% of a CPU, and
+108MiB with 3,000 pending pods added and Headroom managing pods. The climb stopped at
+20,000, so that is a tested count rather than a ceiling. Pods cost more than VPAs do.
+
+With the CRD absent or the list forbidden, Headroom sees no VPAs and logs that once.
+If a list fails any other way, it logs that once and keeps the last list. No reconcile
+runs before the first list finishes, but a first list that fails has no last list to
+keep: every pod reads as free of VPAs until a list succeeds, so Headroom can overwrite
+a limit VPA wrote. Holding reconciles instead would let a broken optional API stop
+Headroom on every node. A VPA reaches running pods within one period plus a debounce,
+so a pod created in that window can still get a seed and keeps it.
 
 The request gate is **pod-level, not per-container**. A managed pod may contain a
 container with no CPU request; that container receives no limit (§5.4, it has no
