@@ -36,7 +36,8 @@ have the full list, the upgrade steps and what was tested.
 ## Pods that Headroom no longer manages
 
 Pods with pod-level `spec.resources` are now left alone on every Kubernetes
-version, because their resizes are refused or capped depending on the version.
+version. Kubernetes 1.35 cannot resize them in place, and from 1.36 a container
+limit cannot rise past the pod-level CPU limit, which Headroom does not adjust.
 They get no birth limit and no resizes, so one with no pod-level CPU limit and a
 container with no CPU limit has no CPU ceiling at all. The
 [runbook](../runbook.md#limitrange-default) covers the optional ways to close
