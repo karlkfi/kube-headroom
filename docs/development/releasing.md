@@ -26,23 +26,35 @@ workflow preserves this; don't "fix" it.
    sources. Open the PR but **hold the merge until after the tag**: the site
    must never advertise a release that doesn't exist. The release URL is
    predictable (`…/releases/tag/vX.Y.Z`), so content can be final beforehand.
+   The same PR carries the curated release notes,
+   [`docs/releases/vX.Y.Z.md`](https://github.com/karlkfi/kube-headroom/blob/main/docs/releases/README.md).
 
-2. **Tag the tip of `main`** (all release PRs merged, CI green):
+2. **Cut a release candidate first, every time.** Tag the tip of `main` (all
+   release PRs merged, CI green), then upgrade from the previous release to the
+   published artifacts on a dedicated kind cluster:
 
    ```sh
    git fetch origin main
-   git tag -a vX.Y.Z -m "kube-headroom vX.Y.Z" origin/main
+   git tag -a vX.Y.Z-rc.1 -m "kube-headroom vX.Y.Z-rc.1" origin/main
+   git push origin vX.Y.Z-rc.1
+   ```
+
+   A failed candidate means fixing forward and cutting `rc.2`. After the final
+   tag has moved `:latest`, delete the rc tag, release, and ghcr package versions.
+
+3. **Tag the release** once a candidate passes, on the same commit unless the
+   validation produced fixes:
+
+   ```sh
+   git tag -a vX.Y.Z -m "kube-headroom vX.Y.Z" <commit>
    git push origin vX.Y.Z
    ```
 
-   Unsure about the pipeline? Rehearse with a `vX.Y.Z-rc.1` tag first, verify,
-   then delete the rc tag, release, and ghcr package versions.
-
-3. **Watch the Release workflow** (image → charts → release, in that order —
+4. **Watch the Release workflow** (image → charts → release, in that order —
    charts are gated on the image so a failed build can't publish a chart
    pointing at a missing image).
 
-4. **Verify the artifacts publicly** — from an unauthenticated client, so a
+5. **Verify the artifacts publicly** — from an unauthenticated client, so a
    ghcr package that silently landed private fails loudly:
 
    ```sh
@@ -57,7 +69,14 @@ workflow preserves this; don't "fix" it.
    <https://github.com/users/karlkfi/packages> (three packages:
    `kube-headroom`, `charts/kube-headroom`, `charts/kube-headroom-crds`).
 
-5. **Merge the announcement PR.** The website deploys on merge to `main`;
+6. **Publish the notes.** The workflow creates the Release with generated notes,
+   so replace them, adding the digests to the file first:
+
+   ```sh
+   gh release edit vX.Y.Z --notes-file docs/releases/vX.Y.Z.md
+   ```
+
+7. **Merge the announcement PR.** The website deploys on merge to `main`;
    confirm the post and banner at <https://kube-headroom.dev>.
 
 ## Versioning notes

@@ -13,7 +13,7 @@ is derived from **requests** (booked capacity), not live usage, so it changes
 only on scheduling events and changes to Headroom's settings — deterministic,
 low-churn, and debuggable.
 
-> **Status: v0.1.0 released** — installable via the Helm charts (see the
+> **Status: v0.2.0 released** — installable via the Helm charts (see the
 > [operator runbook](docs/runbook.md)); the API is `v1alpha1` and defaults to
 > **`dryRun: true`**. Roadmap and priorities live in
 > [the backlog](https://kube-headroom.dev/docs/queue/).
